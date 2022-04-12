@@ -1,4 +1,6 @@
-#include "cuda_accelerations.h"
+
+#include "wrapper.h"
+#include "matrix_transpose.cuh"
 #include <iostream>
 
 
@@ -28,11 +30,19 @@ py::array_t<double> transpose_cpp(py::array_t<double>& matrix) {
 }
 
 
-void transpose_cpp2(py::array_t<double>& input, py::array_t<double>& output) {
-    auto    ibuf       = input.request();
-    auto    obuf       = output.request();
-    double* input_ptr  = static_cast<double*>(ibuf.ptr);
+py::array_t<double> transpose_cuda(py::array_t<double>& matrix) {
+    auto    ibuf      = matrix.request();
+    double* input_ptr = static_cast<double*>(ibuf.ptr);
+    double  m         = matrix.shape()[0];
+    double  n         = matrix.shape()[1];
+
+    auto    result     = py::array_t<double>(ibuf.size);
+    auto    obuf       = result.request();
     double* output_ptr = static_cast<double*>(obuf.ptr);
 
-    _transpose_cpp(input_ptr, output_ptr, input.shape()[0]);
+    matrix_transpose(input_ptr, output_ptr, n, 4, 4);
+    // _transpose_cpp(input_ptr, output_ptr, n);
+
+    result.resize({m, n});
+    return result;
 }

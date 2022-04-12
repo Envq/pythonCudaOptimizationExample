@@ -1,6 +1,5 @@
-from copy import deepcopy
 import time
-import cuda_accelerations as acc
+import build.cuda_accelerations as acc
 import numpy as np
 
 
@@ -50,23 +49,15 @@ print('Time:', (time.perf_counter_ns() - start_time) / 1e6, 'msec\n')
 
 
 #####################################################################
-print('C++2:')
+print('Cuda:')
 start_time = time.perf_counter_ns()
-res_cpp2 = np.zeros(matrix.shape, dtype=np.float64)
-acc.transpose_cpp2(matrix, res_cpp2)
-print_debug(res_cpp2)
+res_cuda = acc.transpose_cuda(matrix)
+print_debug(res_cuda)
 print('Time:', (time.perf_counter_ns() - start_time) / 1e6, 'msec\n')
-
-
-#####################################################################
-# print('Cuda:')
-# start_time = time.perf_counter_ns()
-# print('Answer:\n', acc.transpose_cuda(matrix, size))
-# print('Time:', (time.perf_counter_ns() - start_time) / 1e6, 'msec\n')
 
 
 #####################################################################
 assert np.array_equal(res_python, res_cpp), "Check Error"
 assert np.array_equal(res_numpy, res_cpp), "Check Error"
-assert np.array_equal(res_cpp, res_cpp2), "Check Error"
+assert np.array_equal(res_cpp, res_cuda), "Check Error"
 print('Check OK')

@@ -1,10 +1,9 @@
 #include "CheckError.cuh"
-#include <iostream>
+#include "matrix_transpose.cuh"
 
 
-
-__global__ void matrixTransposeKernel(const int *d_matrix_in, int *d_matrix_out,
-                                      int N) {
+__global__ void matrix_transpose_kernel(const double* d_matrix_in,
+                                        double* d_matrix_out, int N) {
     int col = blockIdx.y * blockDim.y + threadIdx.y;
     int row = blockIdx.x * blockDim.x + threadIdx.x;
 
@@ -12,10 +11,11 @@ __global__ void matrixTransposeKernel(const int *d_matrix_in, int *d_matrix_out,
 }
 
 
-void cudaTranspose(int *h_input, int *h_output, int size, int block_size_x, int block_size_y) {
+void matrix_transpose(double* h_input, double* h_output, int size,
+                      int block_size_x, int block_size_y) {
     // DEVICE MEMORY ALLOCATION
-    int *d_input, *d_output;
-    const size_t size_byte = size * size * sizeof(int);
+    double *     d_input, *d_output;
+    const size_t size_byte = size * size * sizeof(double);
     SAFE_CALL(cudaMalloc(&d_input, size_byte))
     SAFE_CALL(cudaMalloc(&d_output, size_byte))
 
@@ -32,7 +32,7 @@ void cudaTranspose(int *h_input, int *h_output, int size, int block_size_x, int 
     dim3 DimBlock(block_size_x, block_size_y, 1);
 
     // DEVICE EXECUTION
-    matrixTransposeKernel<<<DimGrid, DimBlock>>>(d_input, d_output, size);
+    matrix_transpose_kernel<<<DimGrid, DimBlock>>>(d_input, d_output, size);
     CHECK_CUDA_ERROR
 
     // COPY DATA FROM DEVICE TO HOST
@@ -43,50 +43,4 @@ void cudaTranspose(int *h_input, int *h_output, int size, int block_size_x, int 
     SAFE_CALL(cudaFree(d_output))
 
     cudaDeviceReset();
-}
-
-
-void printMatrix(int *matrix, int size) {
-    for (int i = 0; i < size; ++i) {
-        for (int j = 0; j < size; ++j) {
-            std::cout << matrix[i * size + j] << " ";
-        }
-        std::cout << std::endl;
-    }
-    std::cout << std::endl;
-}
-
-
-int main(int argc, char *argv[]) {
-    int size = 8;
-    int tile = 4;
-    int block_size_x = tile;
-    int block_size_y = tile;
-
-    // PRINT INFO
-    std::cout << "SIZE:          " << size << std::endl;
-    std::cout << "BLOCK_SIZE_X:  " << block_size_x << std::endl;
-    std::cout << "BLOCK_SIZE_Y:  " << block_size_y << "\n" << std::endl;
-
-    // HOST MEMORY ALLOCATION
-    int *h_input = new int[size * size]{};
-    int *h_output = new int[size * size]{};
-
-    // HOST INITILIZATION
-    for (int i = 0; i < size; ++i) {
-        for (int j = 0; j < size; ++j) {
-            if (j <= i) {
-                h_input[i * size + j] = 3;
-            }
-        }
-    }
-
-    // CUDA EXECUTION
-    printMatrix(h_input, size);
-    cudaTranspose(h_input, h_output, size, block_size_x, block_size_y);
-    printMatrix(h_output, size);
-
-    // HOST MEMORY DEALLOCATION
-    delete[] h_input;
-    delete[] h_output;
 }
