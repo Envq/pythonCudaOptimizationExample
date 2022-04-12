@@ -1,0 +1,62 @@
+#CLANG-FORMAT-10
+
+Language: Cpp
+Standard: c++17
+IndentWidth: 4
+UseTab: Never
+ColumnLimit: 80
+IndentCaseLabels : true
+MaxEmptyLinesToKeep: 2
+
+# Includes
+SortIncludes: true
+
+
+# Allign
+AlignConsecutiveMacros: true
+AlignConsecutiveAssignments: true
+AlignConsecutiveDeclarations: true
+AlignAfterOpenBracket: Align #BlockIndent
+AlignTrailingComments: true
+AlignEscapedNewlines: Left
+PointerAlignment: true
+AlignOperands: true
+AlwaysBreakTemplateDeclarations: Yes
+
+
+
+# Comments
+FixNamespaceComments: true
+KeepEmptyLinesAtTheStartOfBlocks: false
+
+
+# Brackets
+AllowShortFunctionsOnASingleLine:   None   #Never merge blocks
+# AllowShortFunctionsOnASingleLine: Empty  #Only merge empty blocks
+# AllowShortFunctionsOnASingleLine: Inline #Only merge methods
+# AllowShortFunctionsOnASingleLine: All    #Merge all functions
+BraceWrapping:
+  AfterClass: false
+  AfterControlStatement: false
+  AfterEnum: false
+  AfterFunction: false
+  AfterNamespace: false
+  AfterStruct: false
+  AfterUnion: false
+  AfterExternBlock: false
+  BeforeCatch: false
+  BeforeElse: false
+
+
+# SPACE
+SpaceAfterCStyleCast: false
+SpaceAfterTemplateKeyword: false
+SpaceBeforeAssignmentOperators: true
+SpaceBeforeParens: ControlStatements
+SpaceInEmptyParentheses: false
+SpacesBeforeTrailingComments: 2
+SpacesInAngles: false
+SpacesInCStyleCastParentheses: false
+SpacesInContainerLiterals: false
+SpacesInParentheses: false
+SpacesInSquareBrackets: false
