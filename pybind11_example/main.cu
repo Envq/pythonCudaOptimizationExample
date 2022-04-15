@@ -1,8 +1,8 @@
-#include "matrix_transpose.cuh"
+#include "transpose.cuh"
 #include <iostream>
 
 
-void printMatrix(double* matrix, int size) {
+void printMatrix(float* matrix, int size) {
     for (int i = 0; i < size; ++i) {
         for (int j = 0; j < size; ++j) {
             std::cout << matrix[i * size + j] << " ";
@@ -25,8 +25,8 @@ int main(int argc, char* argv[]) {
     std::cout << "BLOCK_SIZE_Y:  " << block_size_y << "\n" << std::endl;
 
     // HOST MEMORY ALLOCATION
-    double* h_input  = new double[size * size]{};
-    double* h_output = new double[size * size]{};
+    float* h_input  = new float[size * size]{};
+    float* h_output = new float[size * size]{};
 
     // HOST INITILIZATION
     for (int i = 0; i < size; ++i) {
@@ -39,7 +39,8 @@ int main(int argc, char* argv[]) {
 
     // CUDA EXECUTION
     printMatrix(h_input, size);
-    matrix_transpose(h_input, h_output, size, block_size_x, block_size_y);
+    cuda_accelerations::transpose(h_input, h_output, size, block_size_x,
+                                  block_size_y);
     printMatrix(h_output, size);
 
     // HOST MEMORY DEALLOCATION

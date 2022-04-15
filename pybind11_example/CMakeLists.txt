@@ -1,10 +1,6 @@
 cmake_minimum_required(VERSION 3.4)
 project(cuda_accelerations LANGUAGES CXX CUDA)
 
-set(CMAKE_CXX_STANDARD 11)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-
-
 list(APPEND CUDA_NVCC_FLAGS "-arch=sm_61")
 list(APPEND CUDA_NVCC_FLAGS "-w")
 
@@ -17,7 +13,7 @@ set(INCLUDES
 )
 set(SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/src/wrapper.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/src/matrix_transpose.cu
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/transpose.cu
 )
 
 add_subdirectory(pybind11)

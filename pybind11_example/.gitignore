@@ -130,8 +130,5 @@ dmypy.json
 
 
 # Other
-third_party
-a.out
-example/
-pycuda_example/
-cuda_example/
+pybind11
+*.out

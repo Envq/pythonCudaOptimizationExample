@@ -1,9 +1,10 @@
 #include "CheckError.cuh"
-#include "matrix_transpose.cuh"
+#include "transpose.cuh"
+#include <iostream>
 
 
-__global__ void matrix_transpose_kernel(const double* d_matrix_in,
-                                        double* d_matrix_out, int N) {
+__global__ void matrix_transpose_kernel(const float* d_matrix_in,
+                                        float* d_matrix_out, int N) {
     int col = blockIdx.y * blockDim.y + threadIdx.y;
     int row = blockIdx.x * blockDim.x + threadIdx.x;
 
@@ -11,11 +12,11 @@ __global__ void matrix_transpose_kernel(const double* d_matrix_in,
 }
 
 
-void matrix_transpose(double* h_input, double* h_output, int size,
-                      int block_size_x, int block_size_y) {
+void cuda_accelerations::transpose(float* h_input, float* h_output, int size,
+                                   int block_size_x, int block_size_y) {
     // DEVICE MEMORY ALLOCATION
-    double *     d_input, *d_output;
-    const size_t size_byte = size * size * sizeof(double);
+    float *      d_input, *d_output;
+    const size_t size_byte = size * size * sizeof(float);
     SAFE_CALL(cudaMalloc(&d_input, size_byte))
     SAFE_CALL(cudaMalloc(&d_output, size_byte))
 
@@ -30,6 +31,11 @@ void matrix_transpose(double* h_input, double* h_output, int size,
     if (size % block_size_y)
         DimGrid.y++;
     dim3 DimBlock(block_size_x, block_size_y, 1);
+
+    std::cout << "DimGrid: " << DimGrid.x << DimGrid.y << DimGrid.z
+              << std::endl;
+    std::cout << "DimBlock: " << DimBlock.x << DimBlock.y << DimBlock.z
+              << std::endl;
 
     // DEVICE EXECUTION
     matrix_transpose_kernel<<<DimGrid, DimBlock>>>(d_input, d_output, size);

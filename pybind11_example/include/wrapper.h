@@ -9,8 +9,8 @@
 namespace py = pybind11;
 
 
-py::array_t<double> transpose_cpp(py::array_t<double>& matrix);
-py::array_t<double> transpose_cuda(py::array_t<double>& matrix);
+py::array_t<float> transpose_cpp(py::array_t<float>& matrix);
+py::array_t<float> transpose_cuda(py::array_t<float>& matrix);
 
 
 PYBIND11_MODULE(cuda_accelerations, mod) {

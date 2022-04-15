@@ -1,47 +1,39 @@
 
 #include "wrapper.h"
-#include "matrix_transpose.cuh"
+#include "transpose.cuh"
 #include <iostream>
 
 
-void _transpose_cpp(double* input, double* output, int size) {
-    for (int i = 0; i < size; ++i) {
-        for (int j = 0; j < size; ++j) {
-            output[i * size + j] = input[j * size + i];
-        }
-    }
-}
+py::array_t<float> transpose_cpp(py::array_t<float>& matrix) {
+    auto   ibuf      = matrix.request();
+    float* input_ptr = static_cast<float*>(ibuf.ptr);
+    int    n         = matrix.shape()[0];
+    int    m         = matrix.shape()[1];
 
+    auto   result     = py::array_t<float>(ibuf.size);
+    auto   obuf       = result.request();
+    float* output_ptr = static_cast<float*>(obuf.ptr);
 
-py::array_t<double> transpose_cpp(py::array_t<double>& matrix) {
-    auto    ibuf      = matrix.request();
-    double* input_ptr = static_cast<double*>(ibuf.ptr);
-    int     m         = matrix.shape()[0];
-    int     n         = matrix.shape()[1];
-
-    auto    result     = py::array_t<double>(ibuf.size);
-    auto    obuf       = result.request();
-    double* output_ptr = static_cast<double*>(obuf.ptr);
-
-    _transpose_cpp(input_ptr, output_ptr, n);
+    for (int i = 0; i < n; ++i)
+        for (int j = 0; j < n; ++j)
+            output_ptr[i * n + j] = input_ptr[j * n + i];
 
     result.resize({m, n});
     return result;
 }
 
 
-py::array_t<double> transpose_cuda(py::array_t<double>& matrix) {
-    auto    ibuf      = matrix.request();
-    double* input_ptr = static_cast<double*>(ibuf.ptr);
-    double  m         = matrix.shape()[0];
-    double  n         = matrix.shape()[1];
+py::array_t<float> transpose_cuda(py::array_t<float>& matrix) {
+    auto   ibuf      = matrix.request();
+    float* input_ptr = static_cast<float*>(ibuf.ptr);
+    float  m         = matrix.shape()[0];
+    float  n         = matrix.shape()[1];
 
-    auto    result     = py::array_t<double>(ibuf.size);
-    auto    obuf       = result.request();
-    double* output_ptr = static_cast<double*>(obuf.ptr);
+    auto   result     = py::array_t<float>(ibuf.size);
+    auto   obuf       = result.request();
+    float* output_ptr = static_cast<float*>(obuf.ptr);
 
-    matrix_transpose(input_ptr, output_ptr, n, 4, 4);
-    // _transpose_cpp(input_ptr, output_ptr, n);
+    cuda_accelerations::transpose(input_ptr, output_ptr, n, 32, 32);
 
     result.resize({m, n});
     return result;
