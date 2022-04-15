@@ -131,6 +131,5 @@ dmypy.json
 
 # Other
 third_party
-a.out
-example/
-cuda_example/
+*.out
+*.cubin
