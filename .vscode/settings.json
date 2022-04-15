@@ -1,4 +1,6 @@
 {
+    "python.terminal.activateEnvInCurrentTerminal": true,
+    "python.defaultInterpreterPath": "~/venv/bin/python",
     "python.autoComplete.extraPaths": [
         ".venv/lib/pybind11"
     ],
