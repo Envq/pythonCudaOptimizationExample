@@ -10,19 +10,19 @@
 
 // ============================================================================
 // GlOBAL VARS
-const bool print     = 0;
-const int  NUM_TESTS = 10;
-const int  M         = 1 << 13;
-const int  N         = 1 << 13;
-const int  TILE      = 32;
-const int  BLOCK_X   = TILE;
-const int  BLOCK_Y   = TILE;
+const bool print      = 0;
+const int  NUM_TESTS  = 100;
+const int  M          = 1024;
+const int  N          = 1024;
+const int  TILE       = 32;
+const int  TILE_SPLIT = 4;
+const dim3 DimBlock1(TILE, TILE, 1);
+const dim3 DimGrid1(std::ceil((float)N / TILE), std::ceil((float)M / TILE), 1);
+const dim3 DimBlock2(TILE, TILE / TILE_SPLIT, 1);
+const dim3 DimGrid2(std::ceil((float)N / TILE), std::ceil((float)M / TILE), 1);
 
-const int  SIZE  = M * N;
-const int  BYTES = SIZE * sizeof(float);
-const dim3 DimBlock(BLOCK_X, BLOCK_Y, 1);
-const dim3 DimGrid(std::ceil((float)N / BLOCK_X), std::ceil((float)M / BLOCK_Y),
-                   1);
+const int SIZE  = M * N;
+const int BYTES = SIZE * sizeof(float);
 
 
 // ============================================================================
@@ -89,6 +89,61 @@ __global__ void kTranspose_shm_bank(const float* d_input, float* d_output,
     }
 }
 
+__global__ void kTranspose_naive_index(const float* d_input, float* d_output,
+                                       const int m, const int n) {
+    int col = blockIdx.x * blockDim.x + threadIdx.x;
+    int row = blockIdx.y * blockDim.y * TILE_SPLIT + threadIdx.y;
+
+    if (col < n && row < m) {
+        for (int j = 0; j < TILE; j += TILE / TILE_SPLIT)
+            d_output[col * m + (row + j)] = d_input[(row + j) * n + col];
+    }
+}
+
+__global__ void kTranspose_shm_index(const float* d_input, float* d_output,
+                                     const int m, const int n) {
+    __shared__ float buffer[TILE][TILE];
+
+    int col = blockIdx.x * blockDim.x + threadIdx.x;
+    int row = blockIdx.y * blockDim.y * TILE_SPLIT + threadIdx.y;
+
+    if (col < n && row < m) {
+        for (int j = 0; j < TILE; j += TILE / TILE_SPLIT)
+            buffer[threadIdx.y + j][threadIdx.x] = d_input[(row + j) * n + col];
+    }
+    __syncthreads();
+
+    col = blockIdx.y * blockDim.x + threadIdx.x;
+    row = blockIdx.x * blockDim.y * TILE_SPLIT + threadIdx.y;
+    if (col < n && row < m) {
+        for (int j = 0; j < TILE; j += TILE / TILE_SPLIT)
+            d_output[(row + j) * m + col] =
+                buffer[threadIdx.x][threadIdx.y + j];
+    }
+}
+
+__global__ void kTranspose_shm_bank_index(const float* d_input, float* d_output,
+                                          const int m, const int n) {
+    __shared__ float buffer[TILE][TILE + 1];
+
+    int col = blockIdx.x * blockDim.x + threadIdx.x;
+    int row = blockIdx.y * blockDim.y * TILE_SPLIT + threadIdx.y;
+
+    if (col < n && row < m) {
+        for (int j = 0; j < TILE; j += TILE / TILE_SPLIT)
+            buffer[threadIdx.y + j][threadIdx.x] = d_input[(row + j) * n + col];
+    }
+    __syncthreads();
+
+    col = blockIdx.y * blockDim.x + threadIdx.x;
+    row = blockIdx.x * blockDim.y * TILE_SPLIT + threadIdx.y;
+    if (col < n && row < m) {
+        for (int j = 0; j < TILE; j += TILE / TILE_SPLIT)
+            d_output[(row + j) * m + col] =
+                buffer[threadIdx.x][threadIdx.y + j];
+    }
+}
+
 
 // ============================================================================
 // UTILS FUNCTIONS
@@ -134,9 +189,10 @@ void process_test(const float* gold, const float* result, int size,
     if (correct) {
         double bandwitdh = 2 * size * sizeof(float) * 1e-6 * NUM_TESTS / ms;
         std::cout << "Bandwidth (GB/s): " << bandwitdh << std::endl;
-        std::cout << "     time (msec): " << ms << std::endl;
+        double time = ms / NUM_TESTS;
+        std::cout << "     time (msec): " << time << std::endl;
         double speedup_bandwitdh = bandwitdh / copy_bandwidth;
-        double speedup_time      = host_ms / ms;
+        double speedup_time      = host_ms / time;
         std::cout << "Bandwidth Speedup: " << speedup_bandwitdh << "x"
                   << std::endl;
         std::cout << "     Time Speedup: " << speedup_time << "x" << std::endl;
@@ -153,13 +209,14 @@ int main(int argc, char* argv[]) {
     std::cout << "M:       " << M << std::endl;
     std::cout << "N:       " << N << std::endl;
     std::cout << "TILE:    " << TILE << std::endl;
-    std::cout << "BLOCK_X: " << BLOCK_X << std::endl;
-    std::cout << "BLOCK_Y: " << BLOCK_Y << std::endl;
-    std::cout << std::endl;
-    std::cout << "DimBlock: " << DimBlock.x << ", " << DimBlock.y << ", "
-              << DimBlock.z << std::endl;
-    std::cout << "DimGrid: " << DimGrid.x << ", " << DimGrid.y << ", "
-              << DimGrid.z << std::endl;
+    std::cout << "DimBlock1: " << DimBlock1.x << ", " << DimBlock1.y << ", "
+              << DimBlock1.z << std::endl;
+    std::cout << "DimGrid1: " << DimGrid1.x << ", " << DimGrid1.y << ", "
+              << DimGrid1.z << std::endl;
+    std::cout << "DimBlock2: " << DimBlock2.x << ", " << DimBlock2.y << ", "
+              << DimBlock2.z << std::endl;
+    std::cout << "DimGrid2: " << DimGrid2.x << ", " << DimGrid2.y << ", "
+              << DimGrid2.z << std::endl;
     std::cout << std::endl;
 
     // ------------------------------------------------------------------------
@@ -204,11 +261,11 @@ int main(int argc, char* argv[]) {
 
     // ------------------------------------------------------------------------
     // GENERARE COPY BANDWITH
-    SAFE_CALL(cudaMemset(d_output, 0, BYTES));              // Initialize output
-    kCopy<<<DimGrid, DimBlock>>>(d_input, d_output, M, N);  // warmup
+    SAFE_CALL(cudaMemset(d_output, 0, BYTES));  // Initialize output
+    kCopy<<<DimGrid1, DimBlock1>>>(d_input, d_output, M, N);  // warmup
     SAFE_CALL(cudaEventRecord(startEvent, 0));
     for (int i = 0; i < NUM_TESTS; ++i)
-        kCopy<<<DimGrid, DimBlock>>>(d_input, d_output, M, N);
+        kCopy<<<DimGrid1, DimBlock1>>>(d_input, d_output, M, N);
     SAFE_CALL(cudaEventRecord(stopEvent, 0));
     SAFE_CALL(cudaEventSynchronize(stopEvent));
     SAFE_CALL(cudaEventElapsedTime(&device_ms, startEvent, stopEvent));
@@ -224,10 +281,11 @@ int main(int argc, char* argv[]) {
     // ------------------------------------------------------------------------
     std::cout << "TEST: transpose naive" << std::endl;
     SAFE_CALL(cudaMemset(d_output, 0, BYTES));  // Initialize output
-    kTranspose_naive<<<DimGrid, DimBlock>>>(d_input, d_output, M, N);  // warmup
+    kTranspose_naive<<<DimGrid1, DimBlock1>>>(d_input, d_output, M,
+                                              N);  // warmup
     SAFE_CALL(cudaEventRecord(startEvent, 0));
     for (int i = 0; i < NUM_TESTS; ++i)
-        kTranspose_naive<<<DimGrid, DimBlock>>>(d_input, d_output, M, N);
+        kTranspose_naive<<<DimGrid1, DimBlock1>>>(d_input, d_output, M, N);
     SAFE_CALL(cudaEventRecord(stopEvent, 0));
     SAFE_CALL(cudaEventSynchronize(stopEvent));
     SAFE_CALL(cudaEventElapsedTime(&device_ms, startEvent, stopEvent));
@@ -239,10 +297,11 @@ int main(int argc, char* argv[]) {
     // ------------------------------------------------------------------------
     std::cout << "TEST: transpose with shared memory" << std::endl;
     SAFE_CALL(cudaMemset(d_output, 0, BYTES));  // Initialize output
-    kTranspose_naive<<<DimGrid, DimBlock>>>(d_input, d_output, M, N);  // warmup
+    kTranspose_shm<<<DimGrid1, DimBlock1>>>(d_input, d_output, M,
+                                            N);  // warmup
     SAFE_CALL(cudaEventRecord(startEvent, 0));
     for (int i = 0; i < NUM_TESTS; ++i)
-        kTranspose_shm<<<DimGrid, DimBlock>>>(d_input, d_output, M, N);
+        kTranspose_shm<<<DimGrid1, DimBlock1>>>(d_input, d_output, M, N);
     SAFE_CALL(cudaEventRecord(stopEvent, 0));
     SAFE_CALL(cudaEventSynchronize(stopEvent));
     SAFE_CALL(cudaEventElapsedTime(&device_ms, startEvent, stopEvent));
@@ -256,10 +315,66 @@ int main(int argc, char* argv[]) {
         << "TEST: transpose with shared memory and bank conflict avoidance"
         << std::endl;
     SAFE_CALL(cudaMemset(d_output, 0, BYTES));  // Initialize output
-    kTranspose_naive<<<DimGrid, DimBlock>>>(d_input, d_output, M, N);  // warmup
+    kTranspose_shm_bank<<<DimGrid1, DimBlock1>>>(d_input, d_output, M,
+                                                 N);  // warmup
     SAFE_CALL(cudaEventRecord(startEvent, 0));
     for (int i = 0; i < NUM_TESTS; ++i)
-        kTranspose_shm_bank<<<DimGrid, DimBlock>>>(d_input, d_output, M, N);
+        kTranspose_shm_bank<<<DimGrid1, DimBlock1>>>(d_input, d_output, M, N);
+    SAFE_CALL(cudaEventRecord(stopEvent, 0));
+    SAFE_CALL(cudaEventSynchronize(stopEvent));
+    SAFE_CALL(cudaEventElapsedTime(&device_ms, startEvent, stopEvent));
+    CHECK_CUDA_ERROR
+    SAFE_CALL(cudaMemcpy(h_output, d_output, BYTES, cudaMemcpyDeviceToHost))
+    process_test(h_gold, h_output, SIZE, copy_bandwidth, host_ms, device_ms);
+
+
+    // ------------------------------------------------------------------------
+    std::cout << "TEST: transpose naive with reduced index calculation"
+              << std::endl;
+    SAFE_CALL(cudaMemset(d_output, 0, BYTES));  // Initialize output
+    kTranspose_naive_index<<<DimGrid2, DimBlock2>>>(d_input, d_output, M,
+                                                    N);  // warmup
+    SAFE_CALL(cudaEventRecord(startEvent, 0));
+    for (int i = 0; i < NUM_TESTS; ++i)
+        kTranspose_naive_index<<<DimGrid2, DimBlock2>>>(d_input, d_output, M,
+                                                        N);
+    SAFE_CALL(cudaEventRecord(stopEvent, 0));
+    SAFE_CALL(cudaEventSynchronize(stopEvent));
+    SAFE_CALL(cudaEventElapsedTime(&device_ms, startEvent, stopEvent));
+    CHECK_CUDA_ERROR
+    SAFE_CALL(cudaMemcpy(h_output, d_output, BYTES, cudaMemcpyDeviceToHost))
+    process_test(h_gold, h_output, SIZE, copy_bandwidth, host_ms, device_ms);
+
+
+    // ------------------------------------------------------------------------
+    std::cout
+        << "TEST: transpose with shared memory and reduced index calculation"
+        << std::endl;
+    SAFE_CALL(cudaMemset(d_output, 0, BYTES));  // Initialize output
+    kTranspose_shm_index<<<DimGrid2, DimBlock2>>>(d_input, d_output, M,
+                                                  N);  // warmup
+    SAFE_CALL(cudaEventRecord(startEvent, 0));
+    for (int i = 0; i < NUM_TESTS; ++i)
+        kTranspose_shm_index<<<DimGrid2, DimBlock2>>>(d_input, d_output, M, N);
+    SAFE_CALL(cudaEventRecord(stopEvent, 0));
+    SAFE_CALL(cudaEventSynchronize(stopEvent));
+    SAFE_CALL(cudaEventElapsedTime(&device_ms, startEvent, stopEvent));
+    CHECK_CUDA_ERROR
+    SAFE_CALL(cudaMemcpy(h_output, d_output, BYTES, cudaMemcpyDeviceToHost))
+    process_test(h_gold, h_output, SIZE, copy_bandwidth, host_ms, device_ms);
+
+
+    // ------------------------------------------------------------------------
+    std::cout << "TEST: transpose with shared memory, bank conflict "
+                 "avoidance and reduced index calculation"
+              << std::endl;
+    SAFE_CALL(cudaMemset(d_output, 0, BYTES));  // Initialize output
+    kTranspose_shm_bank_index<<<DimGrid2, DimBlock2>>>(d_input, d_output, M,
+                                                       N);  // warmup
+    SAFE_CALL(cudaEventRecord(startEvent, 0));
+    for (int i = 0; i < NUM_TESTS; ++i)
+        kTranspose_shm_bank_index<<<DimGrid2, DimBlock2>>>(d_input, d_output, M,
+                                                           N);
     SAFE_CALL(cudaEventRecord(stopEvent, 0));
     SAFE_CALL(cudaEventSynchronize(stopEvent));
     SAFE_CALL(cudaEventElapsedTime(&device_ms, startEvent, stopEvent));
