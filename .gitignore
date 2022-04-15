@@ -133,4 +133,3 @@ dmypy.json
 third_party
 a.out
 example/
-cuda_example/
