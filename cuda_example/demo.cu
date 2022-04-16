@@ -37,6 +37,38 @@ __global__ void kCopy(const float* d_input, float* d_output, const int m,
     }
 }
 
+__global__ void kCopy_shm(const float* d_input, float* d_output, const int m,
+                          const int n) {
+    __shared__ float buffer[TILE][TILE];
+
+    int col = blockIdx.x * TILE + threadIdx.x;
+    int row = blockIdx.y * TILE + threadIdx.y;
+    if ((col < n) && (row < m)) {
+        buffer[threadIdx.y][threadIdx.x] = d_input[row * n + col];
+    }
+    __syncthreads();
+
+    if ((col < m) && (row < n)) {
+        d_output[row * m + col] = buffer[threadIdx.y][threadIdx.x];
+    }
+}
+
+__global__ void kCopy_shm_bank(const float* d_input, float* d_output,
+                               const int m, const int n) {
+    __shared__ float buffer[TILE][TILE + 1];
+
+    int col = blockIdx.x * TILE + threadIdx.x;
+    int row = blockIdx.y * TILE + threadIdx.y;
+    if ((col < n) && (row < m)) {
+        buffer[threadIdx.y][threadIdx.x] = d_input[row * n + col];
+    }
+    __syncthreads();
+
+    if ((col < m) && (row < n)) {
+        d_output[row * m + col] = buffer[threadIdx.y][threadIdx.x];
+    }
+}
+
 __global__ void kTranspose_naive(const float* d_input, float* d_output,
                                  const int m, const int n) {
     int col = blockIdx.x * blockDim.x + threadIdx.x;
@@ -168,7 +200,7 @@ void transpose_cpp(const float* matrix, float* result, int m, int n) {
     }
 }
 
-bool equals_array(const float* gold, const float* result, int size) {
+bool check_array(const float* gold, const float* result, int size) {
     bool correct = true;
     for (int i = 0; i < size; ++i)
         if (result[i] != gold[i]) {
@@ -185,10 +217,10 @@ bool equals_array(const float* gold, const float* result, int size) {
 void process_test(const float* gold, const float* result, int size,
                   float copy_bandwidth, float host_ms, float ms) {
     printMatrix(result, N, M, "output");
-    bool correct = equals_array(gold, result, size);
+    bool correct = check_array(gold, result, size);
     if (correct) {
         double bandwitdh = 2 * size * sizeof(float) * 1e-6 * NUM_TESTS / ms;
-        std::cout << "Bandwidth (GB/s): " << bandwitdh << std::endl;
+        std::cout << "Bandwidth (MB/s): " << bandwitdh << std::endl;
         double time = ms / NUM_TESTS;
         std::cout << "     time (msec): " << time << std::endl;
         double speedup_bandwitdh = bandwitdh / copy_bandwidth;
@@ -260,7 +292,7 @@ int main(int argc, char* argv[]) {
 
 
     // ------------------------------------------------------------------------
-    // GENERARE COPY BANDWITH
+    // GENERARE COPY BANDWITH and TEST shm, bank
     SAFE_CALL(cudaMemset(d_output, 0, BYTES));  // Initialize output
     kCopy<<<DimGrid1, DimBlock1>>>(d_input, d_output, M, N);  // warmup
     SAFE_CALL(cudaEventRecord(startEvent, 0));
@@ -271,10 +303,41 @@ int main(int argc, char* argv[]) {
     SAFE_CALL(cudaEventElapsedTime(&device_ms, startEvent, stopEvent));
     CHECK_CUDA_ERROR
     SAFE_CALL(cudaMemcpy(h_output, d_output, BYTES, cudaMemcpyDeviceToHost))
-    bool   correct = equals_array(h_input, h_output, SIZE);
+    check_array(h_input, h_output, SIZE);
     double copy_bandwidth =
         2 * SIZE * sizeof(float) * 1e-6 * NUM_TESTS / device_ms;
-    std::cout << "Copy Bandwidth (GB/s): " << copy_bandwidth << std::endl
+    std::cout << "Copy Bandwidth (MB/s):            " << copy_bandwidth
+              << std::endl;
+
+    SAFE_CALL(cudaMemset(d_output, 0, BYTES));  // Initialize output
+    kCopy_shm<<<DimGrid1, DimBlock1>>>(d_input, d_output, M, N);  // warmup
+    SAFE_CALL(cudaEventRecord(startEvent, 0));
+    for (int i = 0; i < NUM_TESTS; ++i)
+        kCopy_shm<<<DimGrid1, DimBlock1>>>(d_input, d_output, M, N);
+    SAFE_CALL(cudaEventRecord(stopEvent, 0));
+    SAFE_CALL(cudaEventSynchronize(stopEvent));
+    SAFE_CALL(cudaEventElapsedTime(&device_ms, startEvent, stopEvent));
+    CHECK_CUDA_ERROR
+    SAFE_CALL(cudaMemcpy(h_output, d_output, BYTES, cudaMemcpyDeviceToHost))
+    check_array(h_input, h_output, SIZE);
+    std::cout << "Copy+SHMEM Bandwidth (MB/s):      "
+              << (2 * SIZE * sizeof(float) * 1e-6 * NUM_TESTS / device_ms)
+              << std::endl;
+
+    SAFE_CALL(cudaMemset(d_output, 0, BYTES));  // Initialize output
+    kCopy_shm_bank<<<DimGrid1, DimBlock1>>>(d_input, d_output, M, N);  // warmup
+    SAFE_CALL(cudaEventRecord(startEvent, 0));
+    for (int i = 0; i < NUM_TESTS; ++i)
+        kCopy_shm_bank<<<DimGrid1, DimBlock1>>>(d_input, d_output, M, N);
+    SAFE_CALL(cudaEventRecord(stopEvent, 0));
+    SAFE_CALL(cudaEventSynchronize(stopEvent));
+    SAFE_CALL(cudaEventElapsedTime(&device_ms, startEvent, stopEvent));
+    CHECK_CUDA_ERROR
+    SAFE_CALL(cudaMemcpy(h_output, d_output, BYTES, cudaMemcpyDeviceToHost))
+    check_array(h_input, h_output, SIZE);
+    std::cout << "Copy+SHMEM+BANK Bandwidth (MB/s): "
+              << (2 * SIZE * sizeof(float) * 1e-6 * NUM_TESTS / device_ms)
+              << std::endl
               << std::endl;
 
 
