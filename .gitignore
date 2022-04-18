@@ -132,4 +132,4 @@ dmypy.json
 # Other
 third_party
 *.out
-example/
+_old/
