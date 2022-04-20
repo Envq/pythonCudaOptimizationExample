@@ -1,87 +1,72 @@
-from cuda_accelerations import *
+import cuda_accelerations as acc
+import numpy as np
+import time
+from math import ceil 
+
 
 ####################################################################
 np.set_printoptions(threshold=1000 ,linewidth=1000)
-debug_array  = 0
-debug_kernel = 0
-debug_time   = 1
-
-dim = (1<<14, 1<<14)
+NUM_REPS  = 10
+DIMENSION = 1024
+# DIMENSION = round(0.5*np.product((184, 128, 3, 1)))
+# DIMENSION = round(0.5*np.product((19, 23, 16)))
+# DIMENSION = round(0.5*np.product((38, 23, 16)))
+dim = (DIMENSION, DIMENSION)
 # input = np.random.uniform(low=0, high=1, size=dim).astype(np.float32)
-input = np.arange(0, np.product(dim), dtype=np.float32).reshape(dim)
+# input = np.arange(0, np.product(dim), dtype=np.float32).reshape(dim)
 # input = np.linspace(0.1, 0.9, np.product(dim), dtype=np.float32).reshape(dim)
-printDebug(input, debug_array)
 
 
 #####################################################################
-def test_numpy():
+def run_test():
+    # -- Generate Input
+    input = np.random.uniform(low=0, high=1, size=dim).astype(np.float32)
+
+    # -- Numpy Part
     start = time.time()
     res_numpy2D = np.transpose(input)
-    # res_numpy3D = np.transpose(input, (1, 2, 0))
     end = time.time()
-    printDebug(f'   msec: {(end-start)*1e3}', debug_time)
-    return res_numpy2D
+    numpy_time = (end-start)*1e3
 
-
-def test_nop():
-    k = getKernelTranspose('nop')
-    input1D = np.zeros((5,5))
-    cuda_transpose2D(k, input1D, input.shape, block=(4, 4), grid=None, debug=debug_kernel)
-
-
-def test_transpose(kernel_name, blockDim, gridDim=None):
+    # -- Cuda Part
     start = time.time()
     input1D = input.flatten()
     end = time.time()
     time_flat = (end-start)*1e3
 
-    start = time.time()
-    k = getKernelTranspose(kernel_name)
-    res_cuda1D, kernel_time = cuda_transpose2D(k, input1D, input.shape, block=blockDim, grid=gridDim, debug=debug_kernel)
-    end = time.time() 
-    time_cuda_transpose = (end-start)*1e3
-    printDebug(f'   msec: {kernel_time} [kernel', debug_time)
+    res_cuda1D, kernel_time = acc.transpose2D(input1D, input.shape)
 
     start = time.time()
     res_cuda2D = res_cuda1D.reshape(res_numpy2D.shape)
     end = time.time()
-    time_reshape= (end-start)*1e3
-    # printDebug('Total time: ', time_flat + time_cuda_transpose + time_reshape)
-    printDebug(f'   msec: {time_flat + time_reshape} [reshaping]', debug_time)
-    return res_cuda2D
+    time_reshape = (end-start)*1e3
+
+    # -- Post-process
+    assert np.array_equal(res_numpy2D, res_cuda2D), "wrong result"
+    # print("numpy\n", res_numpy2D)
+    # print("pycuda\n", res_cuda2D)
+    reshaping_time = time_flat + time_reshape
+    return numpy_time, kernel_time, reshaping_time
 
 
 
 #####################################################################
-print('\nnumpy:')
-res_numpy2D = test_numpy()
-# printDebug(res_numpy2D, debug_array)
+print('DIMENSION: ', dim)
+CROP = ceil(NUM_REPS * 0.1)
+print('CROP:     ', CROP)
+print('NUM_REPS: ', NUM_REPS)
+
+times_numpy   = list()
+times_kernels = list()
+times_reshape = list()
+for i in range(NUM_REPS+CROP):
+    numpy_time, kernel_time, reshaping_time = run_test()
+    times_numpy.append(numpy_time)
+    times_kernels.append(kernel_time)
+    times_reshape.append(reshaping_time)
 
 
 #####################################################################
-printDebug('\npycuda: no operation')
-test_nop()
-
-
-#####################################################################
-printDebug('\npycuda: transpose')
-res_cuda2D = test_transpose("transpose", blockDim=(32, 32))
-printDebug(res_cuda2D, debug_array)
-assert np.array_equal(res_numpy2D, res_cuda2D), "wrong result"
-printDebug('   result ok')
-
-
-####################################################################
-printDebug('\npycuda: transpose with shared memory')
-res_cuda2D = test_transpose("transpose_shm", blockDim=(32, 32))
-printDebug(res_cuda2D, debug_array)
-assert np.array_equal(res_numpy2D, res_cuda2D), "wrong result"
-printDebug('   result ok')
-
-
-####################################################################
-printDebug('\npycuda: transpose with shared memory2')
-res_cuda2D = test_transpose("transpose_shm2", blockDim=(32, 8), gridDim=(ceil(dim[0]/32), ceil(dim[1]/32)))
-printDebug(res_cuda2D, debug_array)
-assert np.array_equal(res_numpy2D, res_cuda2D), "wrong result"
-printDebug('   result ok')
+print(f'           numpy time (msec): {np.mean(times_numpy[CROP:])}')
+print(f'   pycuda kernel time (msec): {np.mean(times_kernels[CROP:])}')
+print(f'pycuda reshaping time (msec): {np.mean(times_reshape[CROP:])}')

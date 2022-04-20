@@ -282,8 +282,9 @@ int main(int argc, char* argv[]) {
     start = std::chrono::steady_clock::now();
     transpose_cpp(h_input, h_gold, M, N);
     end     = std::chrono::steady_clock::now();
-    host_ms = std::chrono::duration_cast<std::chrono::milliseconds>(end - start)
-                  .count();
+    host_ms = std::chrono::duration_cast<std::chrono::nanoseconds>(end - start)
+                  .count() *
+              1e-6;
     printMatrix(h_gold, N, M, "gold");
     std::cout << "Host Time (msec): " << host_ms << std::endl;
 

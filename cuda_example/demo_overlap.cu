@@ -207,9 +207,9 @@ void runTest(const float* h_input1, const float* h_input2, float* h_output,
     float kernel_ms = launcher(h_input1, h_input2, h_output);
     end             = std::chrono::steady_clock::now();
     float device_ms =
-        std::chrono::duration_cast<std::chrono::milliseconds>(end - start)
-            .count();
-
+        std::chrono::duration_cast<std::chrono::nanoseconds>(end - start)
+            .count() *
+        1e-6;
     // CHECK CORRECTNESS
     bool correct = true;
     for (int i = 0; i < SIZE; ++i) {
@@ -264,8 +264,9 @@ int main(int argc, char* argv[]) {
     }
     end = std::chrono::steady_clock::now();
     float host_ms =
-        std::chrono::duration_cast<std::chrono::milliseconds>(end - start)
-            .count();
+        std::chrono::duration_cast<std::chrono::nanoseconds>(end - start)
+            .count() *
+        1e-6;
 
     // RUN TESTs
     std::cout << "\nTest: Sequential" << std::endl;
