@@ -67,5 +67,11 @@ print('Check: OK')
 
 
 ###############################################################################
-print(tensor3D.flatten())
-print(np.transpose(tensor3D, (1,2,0)).flatten())
+input  = tensor3D
+output = np.transpose(input, (1,2,0))
+print('\n\niDim: ', input.shape)
+print('\n\noDim: ', output.shape)
+print("\ninput:\n", input)
+print("\noutput:\n", output)
+print("\ninput:\n", input.flatten())
+print("\noutput:\n", output.flatten())
