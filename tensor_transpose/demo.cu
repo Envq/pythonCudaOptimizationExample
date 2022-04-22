@@ -8,14 +8,29 @@
 // ============================================================================
 // SETTINGS
 const int NUM_REPS = 100;
-const int TILE     = 2;
-const int BLOCK_X  = TILE;  // dim2
-const int BLOCK_Y  = TILE;  // dim1
-const int BLOCK_Z  = TILE;  // dim0
 
-const int DIMENSION[]   = {2, 3, 4};
-const int PERMUTATION[] = {1, 2, 0};
+// const int T       = 8;
+// const int TILE_X  = T;
+// const int TILE_Y  = T;
+// const int TILE_Z  = T;
+// const int BLOCK_X = T;  // dim2
+// const int BLOCK_Y = T;  // dim1
+// const int BLOCK_Z = T;  // dim0
+
+// const int DIMENSION[]   = {64, 32, 100};
 // const int PERMUTATION[] = {1, 2, 0};
+
+
+const int T       = 32;
+const int TILE_X  = T;
+const int TILE_Y  = T;
+const int TILE_Z  = 1;
+const int BLOCK_X = T;  // dim2
+const int BLOCK_Y = T;  // dim1
+const int BLOCK_Z = 1;  // dim0
+
+const int DIMENSION[]   = {1, 1024, 1024};
+const int PERMUTATION[] = {0, 2, 1};
 
 
 // ============================================================================
@@ -26,27 +41,6 @@ inline cudaError_t CHECK_CUDA(cudaError_t result) {
         assert(result == cudaSuccess);
     }
     return result;
-}
-
-__global__ void matrix_transpose_kernel(const float* d_input, float* d_output,
-                                        const int m, const int n) {
-    __shared__ float buffer[TILE][TILE + 1];
-
-    // read matrix in linear order
-    int col = blockIdx.x * TILE + threadIdx.x;
-    int row = blockIdx.y * TILE + threadIdx.y;
-    if ((col < n) && (row < m)) {
-        buffer[threadIdx.y][threadIdx.x] = d_input[row * n + col];
-    }
-    __syncthreads();
-
-    // write transposed matrix in linear order
-    col = blockIdx.y * TILE + threadIdx.x;
-    row = blockIdx.x * TILE + threadIdx.y;
-    if ((col < m) && (row < n)) {
-        // transpose is done with buffer
-        d_output[row * m + col] = buffer[threadIdx.x][threadIdx.y];
-    }
 }
 
 __global__ void copy_kernel(const float* d_input, float* d_output, int dim0,
@@ -79,103 +73,75 @@ __global__ void transpose_naive_kernel(const float* d_input, float* d_output,
     }
 }
 
-__global__ void transpose_shmem_kernel3(const float* d_input, float* d_output,
-                                        int dim0, int dim1, int dim2, int p0,
-                                        int p1, int p2) {
-    __shared__ float buffer[TILE][TILE][TILE];
-    int              idx[3] = {
-        blockIdx.z * blockDim.z + threadIdx.z,  // i
-        blockIdx.y * blockDim.y + threadIdx.y,  // j
-        blockIdx.x * blockDim.x + threadIdx.x,  // k
-    };
-
-    int iDim[3] = {dim0, dim1, dim2};
-    if (idx[0] < iDim[0] && idx[1] < iDim[1] && idx[2] < iDim[2]) {
-        int iIndex = (idx[0] * iDim[1] * iDim[2]) + (idx[1] * iDim[2]) + idx[2];
-        buffer[threadIdx.z][threadIdx.y][threadIdx.x] = d_input[iIndex];
-    }
-
-    __syncthreads();
-
-    int oDim[3] = {iDim[p0], iDim[p1], iDim[p2]};
-    int odx[3]  = {idx[p0], idx[p1], idx[p2]};
-    if (odx[0] < oDim[0] && odx[1] < oDim[1] && odx[2] < oDim[2]) {
-        int threads[3] = {threadIdx.z, threadIdx.y, threadIdx.x};
-        int oIndex = (idx[0] * iDim[1] * iDim[2]) + (idx[1] * iDim[2]) + idx[2];
-        d_output[oIndex] = buffer[threads[p0]][threads[p1]][threads[p2]];
-    }
-}
-
-__global__ void transpose_shmem_kernel2(const float* d_input, float* d_output,
-                                        int dim0, int dim1, int dim2, int p0,
-                                        int p1, int p2) {
-    // Permutation = (1, 2, 0)
-    __shared__ float buffer[TILE][TILE][TILE];
-
-    int iDim[3] = {dim0, dim1, dim2};
-    int i       = blockIdx.z * TILE + threadIdx.z;
-    int j       = blockIdx.y * TILE + threadIdx.y;
-    int k       = blockIdx.x * TILE + threadIdx.x;
-    if (i < iDim[0] && j < iDim[1] && k < iDim[2]) {
-        int iIndex = (i * iDim[1] * iDim[2]) + (j * iDim[2]) + k;
-        buffer[threadIdx.z][threadIdx.y][threadIdx.x] = d_input[iIndex];
-    }
-    __syncthreads();
-
-    int oDim[3] = {dim1, dim2, dim0};
-    i           = blockIdx.y * TILE + threadIdx.z;
-    j           = blockIdx.x * TILE + threadIdx.y;
-    k           = blockIdx.z * TILE + threadIdx.x;
-    if (i < oDim[0] && j < oDim[1] && k < oDim[2]) {
-        int threads[3]   = {threadIdx.z, threadIdx.y, threadIdx.x};
-        int oIndex       = (i * oDim[1] * oDim[2]) + (j * oDim[2]) + k;
-        d_output[oIndex] = buffer[threadIdx.x][threadIdx.z][threadIdx.y];
-    }
-}
-
 __global__ void transpose_shmem_kernel(const float* d_input, float* d_output,
                                        int dim0, int dim1, int dim2, int p0,
                                        int p1, int p2) {
-    __shared__ float buffer[TILE][TILE][TILE];
+    __shared__ float buffer[TILE_Z][TILE_Y][TILE_X];
 
     int iDim[3] = {dim0, dim1, dim2};
-    int i       = blockIdx.z * TILE + threadIdx.z;
-    int j       = blockIdx.y * TILE + threadIdx.y;
-    int k       = blockIdx.x * TILE + threadIdx.x;
+    int i       = blockIdx.z * TILE_Z + threadIdx.z;
+    int j       = blockIdx.y * TILE_Y + threadIdx.y;
+    int k       = blockIdx.x * TILE_X + threadIdx.x;
     if (i < iDim[0] && j < iDim[1] && k < iDim[2]) {
-        int iIndex = (i * iDim[1] * iDim[2]) + (j * iDim[2]) + k;
-        buffer[threadIdx.z][threadIdx.y][threadIdx.x] = d_input[iIndex];
+        int iIndex     = (i * iDim[1] * iDim[2]) + (j * iDim[2]) + k;
+        int threads[3] = {threadIdx.z, threadIdx.y, threadIdx.x};
+        buffer[threads[p0]][threads[p1]][threads[p2]] = d_input[iIndex];
     }
     __syncthreads();
 
     int oDim[3]   = {iDim[p0], iDim[p1], iDim[p2]};
     int blocks[3] = {blockIdx.z, blockIdx.y, blockIdx.x};
-    i             = blocks[p0] * TILE + threadIdx.z;
-    j             = blocks[p1] * TILE + threadIdx.y;
-    k             = blocks[p2] * TILE + threadIdx.x;
+    i             = blocks[p0] * TILE_Z + threadIdx.z;
+    j             = blocks[p1] * TILE_Y + threadIdx.y;
+    k             = blocks[p2] * TILE_X + threadIdx.x;
     if (i < oDim[0] && j < oDim[1] && k < oDim[2]) {
-        int threads[3]   = {threadIdx.z, threadIdx.y, threadIdx.x};
-        int targets[3]   = {threads[p0], threads[p1], threads[p2]};
         int oIndex       = (i * oDim[1] * oDim[2]) + (j * oDim[2]) + k;
-        d_output[oIndex] = buffer[targets[p0]][targets[p1]][targets[p2]];
+        d_output[oIndex] = buffer[threadIdx.z][threadIdx.y][threadIdx.x];
     }
 }
 
-__global__ void kTranspose_shm(const float* d_input, float* d_output,
-                               const int dim0, const int dim1) {
-    __shared__ float buffer[TILE][TILE];
+__global__ void transpose_shmem_bank_kernel(const float* d_input,
+                                            float* d_output, int dim0, int dim1,
+                                            int dim2, int p0, int p1, int p2) {
+    __shared__ float buffer[TILE_Z][TILE_Y][TILE_X + 1];
+
+    int iDim[3] = {dim0, dim1, dim2};
+    int i       = blockIdx.z * TILE_Z + threadIdx.z;
+    int j       = blockIdx.y * TILE_Y + threadIdx.y;
+    int k       = blockIdx.x * TILE_X + threadIdx.x;
+    if (i < iDim[0] && j < iDim[1] && k < iDim[2]) {
+        int iIndex     = (i * iDim[1] * iDim[2]) + (j * iDim[2]) + k;
+        int threads[3] = {threadIdx.z, threadIdx.y, threadIdx.x};
+        buffer[threads[p0]][threads[p1]][threads[p2]] = d_input[iIndex];
+    }
+    __syncthreads();
+
+    int oDim[3]   = {iDim[p0], iDim[p1], iDim[p2]};
+    int blocks[3] = {blockIdx.z, blockIdx.y, blockIdx.x};
+    i             = blocks[p0] * TILE_Z + threadIdx.z;
+    j             = blocks[p1] * TILE_Y + threadIdx.y;
+    k             = blocks[p2] * TILE_X + threadIdx.x;
+    if (i < oDim[0] && j < oDim[1] && k < oDim[2]) {
+        int oIndex       = (i * oDim[1] * oDim[2]) + (j * oDim[2]) + k;
+        d_output[oIndex] = buffer[threadIdx.z][threadIdx.y][threadIdx.x];
+    }
+}
+
+__global__ void matrix_transpose_kernel(const float* d_input, float* d_output,
+                                        const int dim0, const int dim1) {
+    __shared__ float buffer[TILE_Y][TILE_X + 1];
 
     // read matrix in linear order
-    int i = blockIdx.y * TILE + threadIdx.y;
-    int j = blockIdx.x * TILE + threadIdx.x;
+    int j = blockIdx.x * TILE_X + threadIdx.x;
+    int i = blockIdx.y * TILE_Y + threadIdx.y;
     if ((j < dim1) && (i < dim0)) {
         buffer[threadIdx.y][threadIdx.x] = d_input[i * dim1 + j];
     }
     __syncthreads();
 
     // write transposed matrix in linear order
-    i = blockIdx.x * TILE + threadIdx.y;
-    j = blockIdx.y * TILE + threadIdx.x;
+    j = blockIdx.y * TILE_X + threadIdx.x;
+    i = blockIdx.x * TILE_Y + threadIdx.y;
     if ((j < dim0) && (i < dim1)) {
         // transpose is done with buffer
         d_output[i * dim0 + j] = buffer[threadIdx.x][threadIdx.y];
@@ -230,6 +196,19 @@ void array_check(const float* gold, const float* result, int size) {
     }
 }
 
+void process(const float* gold, const float* result, int size, float host_ms,
+             float kernel_ms, int bytes) {
+    array_check(gold, result, size);
+    kernel_ms /= NUM_REPS;
+    std::cout << "       Time (ms): " << kernel_ms << std::endl;
+    std::cout << " Bandwidth(GB/s): " << 2 * bytes * 1e-6 / kernel_ms
+              << std::endl;
+    std::cout << "    Speedup (ms): " << host_ms / kernel_ms << "x"
+              << std::endl;
+
+    // array_print(gold, size);
+    // array_print(result, size);
+}
 
 // ============================================================================
 // MAIN
@@ -239,12 +218,12 @@ int main(int argc, char* argv[]) {
     int        size  = DIMENSION[0] * DIMENSION[1] * DIMENSION[2];
     const int  bytes = size * sizeof(float);
     const dim3 DimBlock(BLOCK_X, BLOCK_Y, BLOCK_Z);
-    const dim3 DimGrid(std::ceil((float)DIMENSION[2] / BLOCK_X),
-                       std::ceil((float)DIMENSION[1] / BLOCK_Y),
-                       std::ceil((float)DIMENSION[0] / BLOCK_Z));
+    const dim3 DimGrid(std::ceil((float)DIMENSION[2] / DimBlock.x),
+                       std::ceil((float)DIMENSION[1] / DimBlock.y),
+                       std::ceil((float)DIMENSION[0] / DimBlock.z));
     // ------------------------------------------------------------------------
     // PRINT INFO
-    std::cout << "TILE:    " << TILE << std::endl;
+    std::cout << "TILE:    " << T << std::endl;
     std::cout << "size:    " << size << std::endl;
     std::cout << "DIMENSION:   (" << DIMENSION[0] << ", " << DIMENSION[1]
               << ", " << DIMENSION[2] << ")" << std::endl;
@@ -336,13 +315,7 @@ int main(int argc, char* argv[]) {
     CHECK_CUDA(cudaEventSynchronize(stopEvent));
     CHECK_CUDA(cudaEventElapsedTime(&kernel_ms, startEvent, stopEvent));
     CHECK_CUDA(cudaMemcpy(h_output, d_output, bytes, cudaMemcpyDeviceToHost));
-    array_check(h_gold, h_output, size);
-    kernel_ms /= NUM_REPS;
-    std::cout << "       Time (ms): " << kernel_ms << std::endl;
-    std::cout << " Bandwidth(GB/s): " << 2 * bytes * 1e-6 / kernel_ms
-              << std::endl;
-    std::cout << "    Speedup (ms): " << host_ms / kernel_ms << "x"
-              << std::endl;
+    process(h_gold, h_output, size, host_ms, kernel_ms, bytes);
 
 
     // ------------------------------------------------------------------------
@@ -361,48 +334,47 @@ int main(int argc, char* argv[]) {
     CHECK_CUDA(cudaEventSynchronize(stopEvent));
     CHECK_CUDA(cudaEventElapsedTime(&kernel_ms, startEvent, stopEvent));
     CHECK_CUDA(cudaMemcpy(h_output, d_output, bytes, cudaMemcpyDeviceToHost));
-    array_check(h_gold, h_output, size);
-    kernel_ms /= NUM_REPS;
-    std::cout << "       Time (ms): " << kernel_ms << std::endl;
-    std::cout << " Bandwidth(GB/s): " << 2 * bytes * 1e-6 / kernel_ms
-              << std::endl;
-    std::cout << "    Speedup (ms): " << host_ms / kernel_ms << "x"
-              << std::endl;
+    process(h_gold, h_output, size, host_ms, kernel_ms, bytes);
 
 
     // ------------------------------------------------------------------------
-    // PRINT
-    array_print(h_input, size);
-    array_print(h_gold, size);
-    array_print(h_output, size);
+    // TRANSPOSE WITH SHARED MEMORY AND BANK CONFLICT AVOIDANCE
+    std::cout << "\nTranspose with shared Memory and Banck Conflict avoidance"
+              << std::endl;
+    CHECK_CUDA(cudaMemset(d_output, 0, bytes));  // Initialize output
+    transpose_shmem_bank_kernel<<<DimGrid, DimBlock>>>(
+        d_input, d_output, DIMENSION[0], DIMENSION[1], DIMENSION[2],
+        PERMUTATION[0], PERMUTATION[1], PERMUTATION[2]);  // warmup
+    CHECK_CUDA(cudaEventRecord(startEvent, 0));
+    for (int i = 0; i < NUM_REPS; ++i)
+        transpose_shmem_bank_kernel<<<DimGrid, DimBlock>>>(
+            d_input, d_output, DIMENSION[0], DIMENSION[1], DIMENSION[2],
+            PERMUTATION[0], PERMUTATION[1], PERMUTATION[2]);
+    CHECK_CUDA(cudaEventRecord(stopEvent, 0));
+    CHECK_CUDA(cudaEventSynchronize(stopEvent));
+    CHECK_CUDA(cudaEventElapsedTime(&kernel_ms, startEvent, stopEvent));
+    CHECK_CUDA(cudaMemcpy(h_output, d_output, bytes, cudaMemcpyDeviceToHost));
+    process(h_gold, h_output, size, host_ms, kernel_ms, bytes);
 
 
     // ------------------------------------------------------------------------
     // MATRIX TRANSPOSE
-    // std::cout << "\nMatrix Transpose" << std::endl;
-    // const dim3 DimBlockMatrix(BLOCK_X, BLOCK_Y, 1);
-    // const dim3 DimGridMatrix(std::ceil((float)DIMENSION[1] / TILE),
-    //                          std::ceil((float)DIMENSION[2] / TILE), 1);
-    // CHECK_CUDA(cudaMemset(d_output, 0, bytes));  // Initialize output
-    // matrix_transpose_kernel<<<DimGridMatrix, DimBlockMatrix>>>(
-    //     d_input, d_output, DIMENSION[1], DIMENSION[2]);  // warmup
-    // CHECK_CUDA(cudaEventRecord(startEvent, 0));
-    // for (int i = 0; i < NUM_REPS; ++i)
-    //     matrix_transpose_kernel<<<DimGridMatrix, DimBlockMatrix>>>(
-    //         d_input, d_output, DIMENSION[1], DIMENSION[2]);
-    // CHECK_CUDA(cudaEventRecord(stopEvent, 0));
-    // CHECK_CUDA(cudaEventSynchronize(stopEvent));
-    // CHECK_CUDA(cudaEventElapsedTime(&kernel_ms, startEvent, stopEvent));
-    // CHECK_CUDA(cudaMemcpy(h_output, d_output, bytes,
-    // cudaMemcpyDeviceToHost)); array_check(h_gold, h_output, size);
-    // std::cout
-    // << "         Time (ms): " << kernel_ms << std::endl; std::cout << "
-    // Bandwidth(GB / s): "
-    //           << 2 * DIMENSION[1] * DIMENSION[3] * sizeof(float) * 1e-6 *
-    //                  NUM_REPS / kernel_ms
-    //           << std::endl;
-    // std::cout << "      Speedup (ms): " << host_ms / kernel_ms << "x"
-    //           << std::endl;
+    std::cout << "\nMatrix Transpose" << std::endl;
+    const dim3 DimBlockMatrix(BLOCK_X, BLOCK_Y, 1);
+    const dim3 DimGridMatrix(std::ceil((float)DIMENSION[2] / DimBlock.x),
+                             std::ceil((float)DIMENSION[1] / DimBlock.y), 1);
+    CHECK_CUDA(cudaMemset(d_output, 0, bytes));  // Initialize output
+    matrix_transpose_kernel<<<DimGridMatrix, DimBlockMatrix>>>(
+        d_input, d_output, DIMENSION[1], DIMENSION[2]);  // warmup
+    CHECK_CUDA(cudaEventRecord(startEvent, 0));
+    for (int i = 0; i < NUM_REPS; ++i)
+        matrix_transpose_kernel<<<DimGridMatrix, DimBlockMatrix>>>(
+            d_input, d_output, DIMENSION[1], DIMENSION[2]);
+    CHECK_CUDA(cudaEventRecord(stopEvent, 0));
+    CHECK_CUDA(cudaEventSynchronize(stopEvent));
+    CHECK_CUDA(cudaEventElapsedTime(&kernel_ms, startEvent, stopEvent));
+    CHECK_CUDA(cudaMemcpy(h_output, d_output, bytes, cudaMemcpyDeviceToHost));
+    process(h_gold, h_output, size, host_ms, kernel_ms, bytes);
 
     // ------------------------------------------------------------------------
     // CLEAN SHUTDOWN

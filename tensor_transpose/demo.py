@@ -3,7 +3,7 @@ import itertools
 
 
 ###############################################################################
-dim = (2,3,4)
+dim = (2,2,2)
 
 
 ###############################################################################
@@ -68,9 +68,17 @@ print('Check: OK')
 
 ###############################################################################
 input  = tensor3D
-output = np.transpose(input, (1,2,0))
-print('\n\niDim: ', input.shape)
-print('\n\noDim: ', output.shape)
+perm =  (0,1,2)
+perm =  (0,2,1)
+perm =  (1,0,2)
+perm =  (1,2,0)
+perm =  (2,0,1)
+# perm =  (2,1,0)
+output = np.transpose(input, perm)
+
+print('\nperm: ', perm)
+print('niDim:  ', input.shape)
+print('oDim:   ', output.shape)
 print("\ninput:\n", input)
 print("\noutput:\n", output)
 print("\ninput:\n", input.flatten())
