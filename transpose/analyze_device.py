@@ -42,7 +42,8 @@ while len(logs) > 0:
         pos = np.arange(counter, counter+offset, inc)
         for i in range(len(name)):
             plt.bar(pos[i], speedup[i], color=col[i])
-        plt.yticks(np.arange(0,22,2))
+        # plt.yticks(np.arange(0,22,2))
+        plt.yticks(np.arange(0,5,1)) 
         plt.xticks([])  
         plt.text(counter, -2, perm, fontsize=11)
         plt.ylabel('Speedup')
@@ -54,5 +55,6 @@ while len(logs) > 0:
     plt.legend(labels=name)
     plt.grid()
     plt.tight_layout()
-    plt.savefig(f"images_device/{dim}.png",dpi=100)
+    # plt.savefig(f"images_device/{dim}.png",dpi=100)
     print(f'speedup_max: {speedup_max}\n')
+plt.show()

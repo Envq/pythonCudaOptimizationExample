@@ -46,6 +46,7 @@ while len(logs) > 0:
         for i in range(len(name)):
             plt.bar(pos[i], bandwidth[i], color=col[i])
         plt.yticks(np.arange(50,650,50)) 
+        # plt.yticks(np.arange(0,150,50)) 
         plt.xticks([])  
         plt.text(counter, -30, perm, fontsize=11)
         plt.ylabel('Bandwidth (GB/s)')
@@ -59,3 +60,4 @@ while len(logs) > 0:
     plt.tight_layout()
     plt.savefig(f"images_kernel/{dim}.png",dpi=100)
     print(f'bandwidth_max: {bandwidth_max}\n')
+# plt.show()
