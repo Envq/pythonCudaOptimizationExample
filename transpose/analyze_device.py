@@ -54,5 +54,5 @@ while len(logs) > 0:
     plt.legend(labels=name)
     plt.grid()
     plt.tight_layout()
-    plt.savefig(f"images_device/{log}.png",dpi=100)
+    plt.savefig(f"images_device/{dim}.png",dpi=100)
     print(f'speedup_max: {speedup_max}\n')

@@ -57,5 +57,5 @@ while len(logs) > 0:
     plt.legend(labels=name)
     plt.grid()
     plt.tight_layout()
-    plt.savefig(f"images_kernel/{log}.png",dpi=100)
+    plt.savefig(f"images_kernel/{dim}.png",dpi=100)
     print(f'bandwidth_max: {bandwidth_max}\n')

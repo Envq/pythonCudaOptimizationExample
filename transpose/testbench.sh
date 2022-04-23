@@ -2,6 +2,7 @@
 
 mkdir -p logs_kernel images_kernel
 mkdir -p logs_device images_device
+mkdir -p logs_matrix images_matrix
 
 perms=(012 021 102 120 201 210)
 for p in "${perms[@]}"
@@ -23,3 +24,8 @@ do
     ./demo_device.out $p 512 16 32 testbench
     ./demo_device.out $p 512 32 16 testbench
 done
+
+
+./demo_matrix.out 1024 1024 testbench
+./demo_matrix.out 64 1024 testbench
+./demo_matrix.out 1024 64 testbench

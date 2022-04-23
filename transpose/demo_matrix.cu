@@ -9,8 +9,17 @@
 // SETTINGS
 const int  NUM_REPS     = 100;
 const bool ENABLE_PRINT = false;
-const int  TILE3D       = 8;
-const int  TILE2D       = 32;
+
+const int TILE3D_Z_V1 = 8;
+const int TILE3D_Y_V1 = 8;
+const int TILE3D_X_V1 = 8;
+
+const int TILE3D_Z_V2 = 1;
+const int TILE3D_Y_V2 = 32;
+const int TILE3D_X_V2 = 32;
+
+const int TILE2D_Y = 32;
+const int TILE2D_X = 32;
 
 
 // ============================================================================
@@ -21,6 +30,76 @@ inline cudaError_t CHECK_CUDA(cudaError_t result) {
         assert(result == cudaSuccess);
     }
     return result;
+}
+
+__global__ void copy3d_simple_kernel(const float* d_input, float* d_output,
+                                     int dimz, int dimy, int dimx, int pz,
+                                     int py, int px) {
+    int x     = blockIdx.x * blockDim.x + threadIdx.x;
+    int y     = blockIdx.y * blockDim.y + threadIdx.y;
+    int z     = blockIdx.z * blockDim.z + threadIdx.z;
+    int index = (z * dimy * dimx) + (y * dimx) + x;
+
+    if (z < dimz && y < dimy && x < dimx) {
+        d_output[index] = d_input[index];
+    }
+}
+
+__global__ void copy2d_simple_kernel(const float* d_input, float* d_output,
+                                     const int dimy, const int dimx) {
+    int x = blockIdx.x * blockDim.x + threadIdx.x;
+    int y = blockIdx.y * blockDim.y + threadIdx.y;
+
+    if (y < dimy && x < dimx) {
+        d_output[y * dimx + x] = d_input[y * dimx + x];
+    }
+}
+
+__global__ void transpose2d_simple_kernel(const float* d_input, float* d_output,
+                                          const int dimy, const int dimx) {
+    int x = blockIdx.x * blockDim.x + threadIdx.x;
+    int y = blockIdx.y * blockDim.y + threadIdx.y;
+
+    if (y < dimy && x < dimx) {
+        d_output[x * dimy + y] = d_input[y * dimx + x];
+    }
+}
+
+__global__ void transpose2d_shm_kernel(const float* d_input, float* d_output,
+                                       const int dimy, const int dimx) {
+    __shared__ float buffer[TILE2D_Y][TILE2D_X];
+
+    int x = blockIdx.x * TILE2D_Y + threadIdx.x;
+    int y = blockIdx.y * TILE2D_X + threadIdx.y;
+    if (y < dimy && x < dimx) {
+        buffer[threadIdx.y][threadIdx.x] = d_input[y * dimx + x];
+    }
+    __syncthreads();
+
+    x = blockIdx.y * TILE2D_Y + threadIdx.x;
+    y = blockIdx.x * TILE2D_X + threadIdx.y;
+    if (y < dimx && x < dimy) {
+        d_output[y * dimy + x] = buffer[threadIdx.x][threadIdx.y];
+    }
+}
+
+__global__ void transpose2d_shm_bank_kernel(const float* d_input,
+                                            float* d_output, const int dimy,
+                                            const int dimx) {
+    __shared__ float buffer[TILE2D_Y][TILE2D_X + 1];
+
+    int x = blockIdx.x * TILE2D_Y + threadIdx.x;
+    int y = blockIdx.y * TILE2D_X + threadIdx.y;
+    if (y < dimy && x < dimx) {
+        buffer[threadIdx.y][threadIdx.x] = d_input[y * dimx + x];
+    }
+    __syncthreads();
+
+    x = blockIdx.y * TILE2D_Y + threadIdx.x;
+    y = blockIdx.x * TILE2D_X + threadIdx.y;
+    if (y < dimx && x < dimy) {
+        d_output[y * dimy + x] = buffer[threadIdx.x][threadIdx.y];
+    }
 }
 
 __global__ void transpose3d_simple_kernel(const float* d_input, float* d_output,
@@ -43,12 +122,12 @@ __global__ void transpose3d_simple_kernel(const float* d_input, float* d_output,
 __global__ void transpose3d_shm_kernel(const float* d_input, float* d_output,
                                        int dimz, int dimy, int dimx, int pz,
                                        int py, int px) {
-    __shared__ float buffer[TILE3D][TILE3D][TILE3D];
+    __shared__ float buffer[TILE3D_Z_V1][TILE3D_Y_V1][TILE3D_X_V1];
 
     int iDim[3] = {dimz, dimy, dimx};
-    int z       = blockIdx.z * TILE3D + threadIdx.z;
-    int y       = blockIdx.y * TILE3D + threadIdx.y;
-    int x       = blockIdx.x * TILE3D + threadIdx.x;
+    int z       = blockIdx.z * TILE3D_Z_V1 + threadIdx.z;
+    int y       = blockIdx.y * TILE3D_Y_V1 + threadIdx.y;
+    int x       = blockIdx.x * TILE3D_X_V1 + threadIdx.x;
     if (z < iDim[0] && y < iDim[1] && x < iDim[2]) {
         int iIndex     = (z * iDim[1] * iDim[2]) + (y * iDim[2]) + x;
         int threads[3] = {threadIdx.z, threadIdx.y, threadIdx.x};
@@ -58,9 +137,9 @@ __global__ void transpose3d_shm_kernel(const float* d_input, float* d_output,
 
     int oDim[3]   = {iDim[pz], iDim[py], iDim[px]};
     int blocks[3] = {blockIdx.z, blockIdx.y, blockIdx.x};
-    z             = blocks[pz] * TILE3D + threadIdx.z;
-    y             = blocks[py] * TILE3D + threadIdx.y;
-    x             = blocks[px] * TILE3D + threadIdx.x;
+    z             = blocks[pz] * TILE3D_Z_V1 + threadIdx.z;
+    y             = blocks[py] * TILE3D_Y_V1 + threadIdx.y;
+    x             = blocks[px] * TILE3D_X_V1 + threadIdx.x;
     if (z < oDim[0] && y < oDim[1] && x < oDim[2]) {
         int oIndex       = (z * oDim[1] * oDim[2]) + (y * oDim[2]) + x;
         d_output[oIndex] = buffer[threadIdx.z][threadIdx.y][threadIdx.x];
@@ -70,12 +149,12 @@ __global__ void transpose3d_shm_kernel(const float* d_input, float* d_output,
 __global__ void transpose3d_shm_bank_kernel(const float* d_input,
                                             float* d_output, int dimz, int dimy,
                                             int dimx, int pz, int py, int px) {
-    __shared__ float buffer[TILE3D][TILE3D][TILE3D + 1];
+    __shared__ float buffer[TILE3D_Z_V1][TILE3D_Y_V1][TILE3D_X_V1 + 1];
 
     int iDim[3] = {dimz, dimy, dimx};
-    int z       = blockIdx.z * TILE3D + threadIdx.z;
-    int y       = blockIdx.y * TILE3D + threadIdx.y;
-    int x       = blockIdx.x * TILE3D + threadIdx.x;
+    int z       = blockIdx.z * TILE3D_Z_V1 + threadIdx.z;
+    int y       = blockIdx.y * TILE3D_Y_V1 + threadIdx.y;
+    int x       = blockIdx.x * TILE3D_X_V1 + threadIdx.x;
     if (z < iDim[0] && y < iDim[1] && x < iDim[2]) {
         int iIndex     = (z * iDim[1] * iDim[2]) + (y * iDim[2]) + x;
         int threads[3] = {threadIdx.z, threadIdx.y, threadIdx.x};
@@ -85,59 +164,67 @@ __global__ void transpose3d_shm_bank_kernel(const float* d_input,
 
     int oDim[3]   = {iDim[pz], iDim[py], iDim[px]};
     int blocks[3] = {blockIdx.z, blockIdx.y, blockIdx.x};
-    z             = blocks[pz] * TILE3D + threadIdx.z;
-    y             = blocks[py] * TILE3D + threadIdx.y;
-    x             = blocks[px] * TILE3D + threadIdx.x;
+    z             = blocks[pz] * TILE3D_Z_V1 + threadIdx.z;
+    y             = blocks[py] * TILE3D_Y_V1 + threadIdx.y;
+    x             = blocks[px] * TILE3D_X_V1 + threadIdx.x;
     if (z < oDim[0] && y < oDim[1] && x < oDim[2]) {
         int oIndex       = (z * oDim[1] * oDim[2]) + (y * oDim[2]) + x;
         d_output[oIndex] = buffer[threadIdx.z][threadIdx.y][threadIdx.x];
     }
 }
 
-__global__ void transpose2d_simple_kernel(const float* d_input, float* d_output,
-                                          const int dimy, const int dimx) {
-    int x = blockIdx.x * blockDim.x + threadIdx.x;
-    int y = blockIdx.y * blockDim.y + threadIdx.y;
+__global__ void transpose3d_shm_kernel_v2(const float* d_input, float* d_output,
+                                          int dimz, int dimy, int dimx, int pz,
+                                          int py, int px) {
+    __shared__ float buffer[TILE3D_Z_V2][TILE3D_Y_V2][TILE3D_X_V2];
 
-    if (y < dimy && x < dimx) {
-        d_output[x * dimy + y] = d_input[y * dimx + x];
-    }
-}
-
-__global__ void transpose2d_shm_kernel(const float* d_input, float* d_output,
-                                       const int dimy, const int dimx) {
-    __shared__ float buffer[TILE2D][TILE2D];
-
-    int x = blockIdx.x * TILE2D + threadIdx.x;
-    int y = blockIdx.y * TILE2D + threadIdx.y;
-    if (y < dimy && x < dimx) {
-        buffer[threadIdx.y][threadIdx.x] = d_input[y * dimx + x];
+    int iDim[3] = {dimz, dimy, dimx};
+    int z       = blockIdx.z * TILE3D_Z_V2 + threadIdx.z;
+    int y       = blockIdx.y * TILE3D_Y_V2 + threadIdx.y;
+    int x       = blockIdx.x * TILE3D_X_V2 + threadIdx.x;
+    if (z < iDim[0] && y < iDim[1] && x < iDim[2]) {
+        int iIndex     = (z * iDim[1] * iDim[2]) + (y * iDim[2]) + x;
+        int threads[3] = {threadIdx.z, threadIdx.y, threadIdx.x};
+        buffer[threads[pz]][threads[py]][threads[px]] = d_input[iIndex];
     }
     __syncthreads();
 
-    x = blockIdx.y * TILE2D + threadIdx.x;
-    y = blockIdx.x * TILE2D + threadIdx.y;
-    if (y < dimx && x < dimy) {
-        d_output[y * dimy + x] = buffer[threadIdx.x][threadIdx.y];
+    int oDim[3]   = {iDim[pz], iDim[py], iDim[px]};
+    int blocks[3] = {blockIdx.z, blockIdx.y, blockIdx.x};
+    z             = blocks[pz] * TILE3D_Z_V2 + threadIdx.z;
+    y             = blocks[py] * TILE3D_Y_V2 + threadIdx.y;
+    x             = blocks[px] * TILE3D_X_V2 + threadIdx.x;
+    if (z < oDim[0] && y < oDim[1] && x < oDim[2]) {
+        int oIndex       = (z * oDim[1] * oDim[2]) + (y * oDim[2]) + x;
+        d_output[oIndex] = buffer[threadIdx.z][threadIdx.y][threadIdx.x];
     }
 }
 
-__global__ void transpose2d_shm_bank_kernel(const float* d_input,
-                                            float* d_output, const int dimy,
-                                            const int dimx) {
-    __shared__ float buffer[TILE2D][TILE2D + 1];
+__global__ void transpose3d_shm_bank_kernel_v2(const float* d_input,
+                                               float* d_output, int dimz,
+                                               int dimy, int dimx, int pz,
+                                               int py, int px) {
+    __shared__ float buffer[TILE3D_Z_V2][TILE3D_Y_V2][TILE3D_X_V2 + 1];
 
-    int x = blockIdx.x * TILE2D + threadIdx.x;
-    int y = blockIdx.y * TILE2D + threadIdx.y;
-    if (y < dimy && x < dimx) {
-        buffer[threadIdx.y][threadIdx.x] = d_input[y * dimx + x];
+    int iDim[3] = {dimz, dimy, dimx};
+    int z       = blockIdx.z * TILE3D_Z_V2 + threadIdx.z;
+    int y       = blockIdx.y * TILE3D_Y_V2 + threadIdx.y;
+    int x       = blockIdx.x * TILE3D_X_V2 + threadIdx.x;
+    if (z < iDim[0] && y < iDim[1] && x < iDim[2]) {
+        int iIndex     = (z * iDim[1] * iDim[2]) + (y * iDim[2]) + x;
+        int threads[3] = {threadIdx.z, threadIdx.y, threadIdx.x};
+        buffer[threads[pz]][threads[py]][threads[px]] = d_input[iIndex];
     }
     __syncthreads();
 
-    x = blockIdx.y * TILE2D + threadIdx.x;
-    y = blockIdx.x * TILE2D + threadIdx.y;
-    if (y < dimx && x < dimy) {
-        d_output[y * dimy + x] = buffer[threadIdx.x][threadIdx.y];
+    int oDim[3]   = {iDim[pz], iDim[py], iDim[px]};
+    int blocks[3] = {blockIdx.z, blockIdx.y, blockIdx.x};
+    z             = blocks[pz] * TILE3D_Z_V2 + threadIdx.z;
+    y             = blocks[py] * TILE3D_Y_V2 + threadIdx.y;
+    x             = blocks[px] * TILE3D_X_V2 + threadIdx.x;
+    if (z < oDim[0] && y < oDim[1] && x < oDim[2]) {
+        int oIndex       = (z * oDim[1] * oDim[2]) + (y * oDim[2]) + x;
+        d_output[oIndex] = buffer[threadIdx.z][threadIdx.y][threadIdx.x];
     }
 }
 
@@ -227,21 +314,22 @@ int main(int argc, char* argv[]) {
         testbench_mode = true;
     }
 
-    std::cout << "HELLO THERE\n";
-
     // ------------------------------------------------------------------------
     // GET INFO
-    int        dim_y   = std::stoi(argv[2]);
-    int        dim_x   = std::stoi(argv[3]);
+    int        dim_y   = std::stoi(argv[1]);
+    int        dim_x   = std::stoi(argv[2]);
     int        perm[3] = {0, 2, 1};
     int        size    = dim_y * dim_x;
     const int  bytes   = size * sizeof(float);
-    const dim3 DimBlock3D(TILE3D, TILE3D, 1);
-    const dim3 DimGrid3D(std::ceil((float)dim_x / DimBlock3D.x),
-                         std::ceil((float)dim_y / DimBlock3D.y), 1);
-    const dim3 DimBlock2D(TILE2D, TILE2D, 1);
+    const dim3 DimBlock2D(TILE2D_X, TILE2D_Y, 1);
     const dim3 DimGrid2D(std::ceil((float)dim_x / DimBlock2D.x),
                          std::ceil((float)dim_y / DimBlock2D.y), 1);
+    const dim3 DimBlock3D_v1(TILE3D_X_V1, TILE3D_Y_V1, 1);
+    const dim3 DimGrid3D_v1(std::ceil((float)dim_x / DimBlock3D_v1.x),
+                            std::ceil((float)dim_y / DimBlock3D_v1.y), 1);
+    const dim3 DimBlock3D_v2(TILE3D_X_V2, TILE3D_Y_V2, 1);
+    const dim3 DimGrid3D_v2(std::ceil((float)dim_x / DimBlock3D_v2.x),
+                            std::ceil((float)dim_y / DimBlock3D_v2.y), 1);
 
     // ------------------------------------------------------------------------
     // SETUP TIMERS
@@ -275,27 +363,30 @@ int main(int argc, char* argv[]) {
     // PRINT INFO
     std::ofstream log;
     if (!testbench_mode) {
-        std::cout << "tile 3D:    " << TILE3D << std::endl;
-        std::cout << "tile 2D:    " << TILE2D << std::endl;
         std::cout << "size:    " << size << std::endl;
         std::cout << "dimension:   (" << dim_y << ", " << dim_x << ")"
                   << std::endl;
-        std::cout << "DimBlock 3D:    (" << DimBlock3D.x << ", " << DimBlock3D.y
-                  << ", " << DimBlock3D.z << ")" << std::endl;
-        std::cout << "DimGrid 3D:     (" << DimGrid3D.x << ", " << DimGrid3D.y
-                  << ", " << DimGrid3D.z << ")" << std::endl;
         std::cout << "DimBlock 2D:    (" << DimBlock2D.x << ", " << DimBlock2D.y
                   << ", " << DimBlock2D.z << ")" << std::endl;
         std::cout << "DimGrid 2D:     (" << DimGrid2D.x << ", " << DimGrid2D.y
                   << ", " << DimGrid2D.z << ")" << std::endl;
+        std::cout << "DimBlock 3D v1:    (" << DimBlock3D_v1.x << ", "
+                  << DimBlock3D_v1.y << ", " << DimBlock3D_v1.z << ")"
+                  << std::endl;
+        std::cout << "DimGrid 3D: v2     (" << DimGrid3D_v1.x << ", "
+                  << DimGrid3D_v1.y << ", " << DimGrid3D_v1.z << ")"
+                  << std::endl;
+        std::cout << "DimBlock 3D v2:    (" << DimBlock3D_v2.x << ", "
+                  << DimBlock3D_v2.y << ", " << DimBlock3D_v2.z << ")"
+                  << std::endl;
+        std::cout << "DimGrid 3D v2:     (" << DimGrid3D_v2.x << ", "
+                  << DimGrid3D_v2.y << ", " << DimGrid3D_v2.z << ")"
+                  << std::endl;
         std::cout << "Host Time (ms): " << host_ms << std::endl;
         std::cout << std::endl;
     } else {
-        std::string log_name = "logs_kernel/";
+        std::string log_name = "logs_matrix/";
         log_name += std::to_string(dim_y) + "x" + std::to_string(dim_x);
-        log_name += "_";
-        log_name += std::to_string(perm[0]) + std::to_string(perm[1]) +
-                    std::to_string(perm[2]);
         log_name += ".log";
         log.open(log_name, std::ios::out);
     }
@@ -308,57 +399,22 @@ int main(int argc, char* argv[]) {
 
     CHECK_CUDA(cudaMemcpy(d_input, h_input, bytes, cudaMemcpyHostToDevice));
 
-    // ------------------------------------------------------------------------
-    // TRANSPOSE 3D SIMPLE
-    CHECK_CUDA(cudaMemset(d_output, 0, bytes));  // Initialize output
-    transpose3d_simple_kernel<<<DimGrid3D, DimBlock3D>>>(
-        d_input, d_output, 1, dim_y, dim_x, perm[0], perm[1],
-        perm[2]);  // warmup
-    CHECK_CUDA(cudaEventRecord(startEvent, 0));
-    for (int i = 0; i < NUM_REPS; ++i)
-        transpose3d_simple_kernel<<<DimGrid3D, DimBlock3D>>>(
-            d_input, d_output, 1, dim_y, dim_x, perm[0], perm[1], perm[2]);
-    CHECK_CUDA(cudaEventRecord(stopEvent, 0));
-    CHECK_CUDA(cudaEventSynchronize(stopEvent));
-    CHECK_CUDA(cudaEventElapsedTime(&kernel_ms, startEvent, stopEvent));
-    CHECK_CUDA(cudaMemcpy(h_output, d_output, bytes, cudaMemcpyDeviceToHost));
-    process("Transpose 3D simple", testbench_mode, h_gold, h_output, size,
-            kernel_ms, host_ms, log, true);
 
     // ------------------------------------------------------------------------
-    // TRANSPOSE 3D SHARED-MEMORY
+    // COPY 2D BANDWIDTH SIMPLE
     CHECK_CUDA(cudaMemset(d_output, 0, bytes));  // Initialize output
-    transpose3d_shm_kernel<<<DimGrid3D, DimBlock3D>>>(
-        d_input, d_output, 1, dim_y, dim_x, perm[0], perm[1],
-        perm[2]);  // warmup
+    copy2d_simple_kernel<<<DimGrid2D, DimBlock2D>>>(d_input, d_output, dim_y,
+                                                    dim_x);  // warmup
     CHECK_CUDA(cudaEventRecord(startEvent, 0));
     for (int i = 0; i < NUM_REPS; ++i)
-        transpose3d_shm_kernel<<<DimGrid3D, DimBlock3D>>>(
-            d_input, d_output, 1, dim_y, dim_x, perm[0], perm[1], perm[2]);
+        copy2d_simple_kernel<<<DimGrid2D, DimBlock2D>>>(d_input, d_output,
+                                                        dim_y, dim_x);
     CHECK_CUDA(cudaEventRecord(stopEvent, 0));
     CHECK_CUDA(cudaEventSynchronize(stopEvent));
     CHECK_CUDA(cudaEventElapsedTime(&kernel_ms, startEvent, stopEvent));
     CHECK_CUDA(cudaMemcpy(h_output, d_output, bytes, cudaMemcpyDeviceToHost));
-    process("Transpose 3D with shared-memory", testbench_mode, h_gold, h_output,
-            size, kernel_ms, host_ms, log, true);
-
-    // ------------------------------------------------------------------------
-    // TRANSPOSE 3D SHARED-MEMORY + BANK CONFLICT FREE
-    CHECK_CUDA(cudaMemset(d_output, 0, bytes));  // Initialize output
-    transpose3d_shm_bank_kernel<<<DimGrid3D, DimBlock3D>>>(
-        d_input, d_output, 1, dim_y, dim_x, perm[0], perm[1],
-        perm[2]);  // warmup
-    CHECK_CUDA(cudaEventRecord(startEvent, 0));
-    for (int i = 0; i < NUM_REPS; ++i)
-        transpose3d_shm_bank_kernel<<<DimGrid3D, DimBlock3D>>>(
-            d_input, d_output, 1, dim_y, dim_x, perm[0], perm[1], perm[2]);
-    CHECK_CUDA(cudaEventRecord(stopEvent, 0));
-    CHECK_CUDA(cudaEventSynchronize(stopEvent));
-    CHECK_CUDA(cudaEventElapsedTime(&kernel_ms, startEvent, stopEvent));
-    CHECK_CUDA(cudaMemcpy(h_output, d_output, bytes, cudaMemcpyDeviceToHost));
-    process("Transpose 3D with shared-memory (bank conflict free)",
-            testbench_mode, h_gold, h_output, size, kernel_ms, host_ms, log,
-            true);
+    process("Copy 2D simple", testbench_mode, h_input, h_output, size,
+            kernel_ms, host_ms, log, false);
 
     // ------------------------------------------------------------------------
     // TRANSPOSE 2D SIMPLE
@@ -408,6 +464,135 @@ int main(int argc, char* argv[]) {
     CHECK_CUDA(cudaEventElapsedTime(&kernel_ms, startEvent, stopEvent));
     CHECK_CUDA(cudaMemcpy(h_output, d_output, bytes, cudaMemcpyDeviceToHost));
     process("Transpose 2D with shared-memory (bank conflict free)",
+            testbench_mode, h_gold, h_output, size, kernel_ms, host_ms, log,
+            true);
+
+    // ------------------------------------------------------------------------
+    // COPY 3D BANDWIDTH SIMPLE V1
+    CHECK_CUDA(cudaMemset(d_output, 0, bytes));  // Initialize output
+    copy3d_simple_kernel<<<DimGrid3D_v1, DimBlock3D_v1>>>(
+        d_input, d_output, 1, dim_y, dim_x, perm[0], perm[1],
+        perm[2]);  // warmup
+    CHECK_CUDA(cudaEventRecord(startEvent, 0));
+    for (int i = 0; i < NUM_REPS; ++i)
+        copy3d_simple_kernel<<<DimGrid3D_v1, DimBlock3D_v1>>>(
+            d_input, d_output, 1, dim_y, dim_x, perm[0], perm[1], perm[2]);
+    CHECK_CUDA(cudaEventRecord(stopEvent, 0));
+    CHECK_CUDA(cudaEventSynchronize(stopEvent));
+    CHECK_CUDA(cudaEventElapsedTime(&kernel_ms, startEvent, stopEvent));
+    CHECK_CUDA(cudaMemcpy(h_output, d_output, bytes, cudaMemcpyDeviceToHost));
+    std::string tilev1_str = "(" + std::to_string(TILE3D_Z_V1) + "," +
+                             std::to_string(TILE3D_Y_V1) + "," +
+                             std::to_string(TILE3D_X_V1) + ")";
+    process("Copy 3D simple V1 (ZYX)=" + tilev1_str, testbench_mode, h_input,
+            h_output, size, kernel_ms, host_ms, log, false);
+
+    // ------------------------------------------------------------------------
+    // COPY 3D BANDWIDTH SIMPLE V2
+    CHECK_CUDA(cudaMemset(d_output, 0, bytes));  // Initialize output
+    copy3d_simple_kernel<<<DimGrid3D_v2, DimBlock3D_v2>>>(
+        d_input, d_output, 1, dim_y, dim_x, perm[0], perm[1],
+        perm[2]);  // warmup
+    CHECK_CUDA(cudaEventRecord(startEvent, 0));
+    for (int i = 0; i < NUM_REPS; ++i)
+        copy3d_simple_kernel<<<DimGrid3D_v2, DimBlock3D_v2>>>(
+            d_input, d_output, 1, dim_y, dim_x, perm[0], perm[1], perm[2]);
+    CHECK_CUDA(cudaEventRecord(stopEvent, 0));
+    CHECK_CUDA(cudaEventSynchronize(stopEvent));
+    CHECK_CUDA(cudaEventElapsedTime(&kernel_ms, startEvent, stopEvent));
+    CHECK_CUDA(cudaMemcpy(h_output, d_output, bytes, cudaMemcpyDeviceToHost));
+    std::string tilev2_str = "(" + std::to_string(TILE3D_Z_V2) + "," +
+                             std::to_string(TILE3D_Y_V2) + "," +
+                             std::to_string(TILE3D_X_V2) + ")";
+    process("Copy 3D simple V2 (ZYX)=" + tilev2_str, testbench_mode, h_input,
+            h_output, size, kernel_ms, host_ms, log, false);
+
+    // ------------------------------------------------------------------------
+    // TRANSPOSE 3D SIMPLE
+    CHECK_CUDA(cudaMemset(d_output, 0, bytes));  // Initialize output
+    transpose3d_simple_kernel<<<DimGrid3D_v1, DimBlock3D_v1>>>(
+        d_input, d_output, 1, dim_y, dim_x, perm[0], perm[1],
+        perm[2]);  // warmup
+    CHECK_CUDA(cudaEventRecord(startEvent, 0));
+    for (int i = 0; i < NUM_REPS; ++i)
+        transpose3d_simple_kernel<<<DimGrid3D_v1, DimBlock3D_v1>>>(
+            d_input, d_output, 1, dim_y, dim_x, perm[0], perm[1], perm[2]);
+    CHECK_CUDA(cudaEventRecord(stopEvent, 0));
+    CHECK_CUDA(cudaEventSynchronize(stopEvent));
+    CHECK_CUDA(cudaEventElapsedTime(&kernel_ms, startEvent, stopEvent));
+    CHECK_CUDA(cudaMemcpy(h_output, d_output, bytes, cudaMemcpyDeviceToHost));
+    process("Transpose 3D simple", testbench_mode, h_gold, h_output, size,
+            kernel_ms, host_ms, log, true);
+
+    // ------------------------------------------------------------------------
+    // TRANSPOSE 3D SHARED-MEMORY
+    CHECK_CUDA(cudaMemset(d_output, 0, bytes));  // Initialize output
+    transpose3d_shm_kernel<<<DimGrid3D_v1, DimBlock3D_v1>>>(
+        d_input, d_output, 1, dim_y, dim_x, perm[0], perm[1],
+        perm[2]);  // warmup
+    CHECK_CUDA(cudaEventRecord(startEvent, 0));
+    for (int i = 0; i < NUM_REPS; ++i)
+        transpose3d_shm_kernel<<<DimGrid3D_v1, DimBlock3D_v1>>>(
+            d_input, d_output, 1, dim_y, dim_x, perm[0], perm[1], perm[2]);
+    CHECK_CUDA(cudaEventRecord(stopEvent, 0));
+    CHECK_CUDA(cudaEventSynchronize(stopEvent));
+    CHECK_CUDA(cudaEventElapsedTime(&kernel_ms, startEvent, stopEvent));
+    CHECK_CUDA(cudaMemcpy(h_output, d_output, bytes, cudaMemcpyDeviceToHost));
+    process("Transpose 3D with shared-memory V1 (ZYX)=" + tilev1_str,
+            testbench_mode, h_gold, h_output, size, kernel_ms, host_ms, log,
+            true);
+
+    // ------------------------------------------------------------------------
+    // TRANSPOSE 3D SHARED-MEMORY + BANK CONFLICT FREE
+    CHECK_CUDA(cudaMemset(d_output, 0, bytes));  // Initialize output
+    transpose3d_shm_bank_kernel<<<DimGrid3D_v1, DimBlock3D_v1>>>(
+        d_input, d_output, 1, dim_y, dim_x, perm[0], perm[1],
+        perm[2]);  // warmup
+    CHECK_CUDA(cudaEventRecord(startEvent, 0));
+    for (int i = 0; i < NUM_REPS; ++i)
+        transpose3d_shm_bank_kernel<<<DimGrid3D_v1, DimBlock3D_v1>>>(
+            d_input, d_output, 1, dim_y, dim_x, perm[0], perm[1], perm[2]);
+    CHECK_CUDA(cudaEventRecord(stopEvent, 0));
+    CHECK_CUDA(cudaEventSynchronize(stopEvent));
+    CHECK_CUDA(cudaEventElapsedTime(&kernel_ms, startEvent, stopEvent));
+    CHECK_CUDA(cudaMemcpy(h_output, d_output, bytes, cudaMemcpyDeviceToHost));
+    process("Transpose 3D with shared-memory V1 (bank conflict free)",
+            testbench_mode, h_gold, h_output, size, kernel_ms, host_ms, log,
+            true);
+
+    // ------------------------------------------------------------------------
+    // TRANSPOSE 3D SHARED-MEMORY V2
+    CHECK_CUDA(cudaMemset(d_output, 0, bytes));  // Initialize output
+    transpose3d_shm_kernel_v2<<<DimGrid3D_v2, DimBlock3D_v2>>>(
+        d_input, d_output, 1, dim_y, dim_x, perm[0], perm[1],
+        perm[2]);  // warmup
+    CHECK_CUDA(cudaEventRecord(startEvent, 0));
+    for (int i = 0; i < NUM_REPS; ++i)
+        transpose3d_shm_kernel_v2<<<DimGrid3D_v2, DimBlock3D_v2>>>(
+            d_input, d_output, 1, dim_y, dim_x, perm[0], perm[1], perm[2]);
+    CHECK_CUDA(cudaEventRecord(stopEvent, 0));
+    CHECK_CUDA(cudaEventSynchronize(stopEvent));
+    CHECK_CUDA(cudaEventElapsedTime(&kernel_ms, startEvent, stopEvent));
+    CHECK_CUDA(cudaMemcpy(h_output, d_output, bytes, cudaMemcpyDeviceToHost));
+    process("Transpose 3D with shared-memory V2 (ZYX)=" + tilev2_str,
+            testbench_mode, h_gold, h_output, size, kernel_ms, host_ms, log,
+            true);
+
+    // ------------------------------------------------------------------------
+    // TRANSPOSE 3D SHARED-MEMORY V2 + BANK CONFLICT FREE
+    CHECK_CUDA(cudaMemset(d_output, 0, bytes));  // Initialize output
+    transpose3d_shm_bank_kernel_v2<<<DimGrid3D_v2, DimBlock3D_v2>>>(
+        d_input, d_output, 1, dim_y, dim_x, perm[0], perm[1],
+        perm[2]);  // warmup
+    CHECK_CUDA(cudaEventRecord(startEvent, 0));
+    for (int i = 0; i < NUM_REPS; ++i)
+        transpose3d_shm_bank_kernel_v2<<<DimGrid3D_v2, DimBlock3D_v2>>>(
+            d_input, d_output, 1, dim_y, dim_x, perm[0], perm[1], perm[2]);
+    CHECK_CUDA(cudaEventRecord(stopEvent, 0));
+    CHECK_CUDA(cudaEventSynchronize(stopEvent));
+    CHECK_CUDA(cudaEventElapsedTime(&kernel_ms, startEvent, stopEvent));
+    CHECK_CUDA(cudaMemcpy(h_output, d_output, bytes, cudaMemcpyDeviceToHost));
+    process("Transpose 3D with shared-memory V2 (bank conflict free)",
             testbench_mode, h_gold, h_output, size, kernel_ms, host_ms, log,
             true);
 
