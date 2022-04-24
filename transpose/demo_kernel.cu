@@ -23,8 +23,7 @@ inline cudaError_t CHECK_CUDA(cudaError_t result) {
 }
 
 __global__ void copy_simple_kernel(const float* d_input, float* d_output,
-                                   int dimz, int dimy, int dimx, int pz, int py,
-                                   int px) {
+                                   int dimz, int dimy, int dimx) {
     int x     = blockIdx.x * blockDim.x + threadIdx.x;
     int y     = blockIdx.y * blockDim.y + threadIdx.y;
     int z     = blockIdx.z * blockDim.z + threadIdx.z;
@@ -36,8 +35,8 @@ __global__ void copy_simple_kernel(const float* d_input, float* d_output,
 }
 
 __global__ void copy_shm_kernel(const float* d_input, float* d_output, int dimz,
-                                int dimy, int dimx, int pz, int py, int px) {
-    __shared__ float buffer[TILE][TILE][TILE + 1];
+                                int dimy, int dimx) {
+    __shared__ float buffer[TILE][TILE][TILE];
 
     int x     = blockIdx.x * TILE + threadIdx.x;
     int y     = blockIdx.y * TILE + threadIdx.y;
@@ -46,7 +45,10 @@ __global__ void copy_shm_kernel(const float* d_input, float* d_output, int dimz,
 
     if (z < dimz && y < dimy && x < dimx) {
         buffer[threadIdx.z][threadIdx.y][threadIdx.x] = d_input[index];
-        __syncthreads();
+    }
+    __syncthreads();
+
+    if (z < dimz && y < dimy && x < dimx) {
         d_output[index] = buffer[threadIdx.z][threadIdx.y][threadIdx.x];
     }
 }
@@ -74,9 +76,9 @@ __global__ void transpose_shm_kernel(const float* d_input, float* d_output,
     __shared__ float buffer[TILE][TILE][TILE];
 
     int iDim[3] = {dimz, dimy, dimx};
-    int z       = blockIdx.z * TILE + threadIdx.z;
-    int y       = blockIdx.y * TILE + threadIdx.y;
     int x       = blockIdx.x * TILE + threadIdx.x;
+    int y       = blockIdx.y * TILE + threadIdx.y;
+    int z       = blockIdx.z * TILE + threadIdx.z;
     if (z < iDim[0] && y < iDim[1] && x < iDim[2]) {
         int iIndex     = (z * iDim[1] * iDim[2]) + (y * iDim[2]) + x;
         int threads[3] = {threadIdx.z, threadIdx.y, threadIdx.x};
@@ -86,9 +88,9 @@ __global__ void transpose_shm_kernel(const float* d_input, float* d_output,
 
     int oDim[3]   = {iDim[pz], iDim[py], iDim[px]};
     int blocks[3] = {blockIdx.z, blockIdx.y, blockIdx.x};
-    z             = blocks[pz] * TILE + threadIdx.z;
-    y             = blocks[py] * TILE + threadIdx.y;
     x             = blocks[px] * TILE + threadIdx.x;
+    y             = blocks[py] * TILE + threadIdx.y;
+    z             = blocks[pz] * TILE + threadIdx.z;
     if (z < oDim[0] && y < oDim[1] && x < oDim[2]) {
         int oIndex       = (z * oDim[1] * oDim[2]) + (y * oDim[2]) + x;
         d_output[oIndex] = buffer[threadIdx.z][threadIdx.y][threadIdx.x];
@@ -101,9 +103,9 @@ __global__ void transpose_shm_bank_kernel(const float* d_input, float* d_output,
     __shared__ float buffer[TILE][TILE][TILE + 1];
 
     int iDim[3] = {dimz, dimy, dimx};
-    int z       = blockIdx.z * TILE + threadIdx.z;
-    int y       = blockIdx.y * TILE + threadIdx.y;
     int x       = blockIdx.x * TILE + threadIdx.x;
+    int y       = blockIdx.y * TILE + threadIdx.y;
+    int z       = blockIdx.z * TILE + threadIdx.z;
     if (z < iDim[0] && y < iDim[1] && x < iDim[2]) {
         int iIndex     = (z * iDim[1] * iDim[2]) + (y * iDim[2]) + x;
         int threads[3] = {threadIdx.z, threadIdx.y, threadIdx.x};
@@ -113,15 +115,320 @@ __global__ void transpose_shm_bank_kernel(const float* d_input, float* d_output,
 
     int oDim[3]   = {iDim[pz], iDim[py], iDim[px]};
     int blocks[3] = {blockIdx.z, blockIdx.y, blockIdx.x};
-    z             = blocks[pz] * TILE + threadIdx.z;
-    y             = blocks[py] * TILE + threadIdx.y;
     x             = blocks[px] * TILE + threadIdx.x;
+    y             = blocks[py] * TILE + threadIdx.y;
+    z             = blocks[pz] * TILE + threadIdx.z;
     if (z < oDim[0] && y < oDim[1] && x < oDim[2]) {
         int oIndex       = (z * oDim[1] * oDim[2]) + (y * oDim[2]) + x;
         d_output[oIndex] = buffer[threadIdx.z][threadIdx.y][threadIdx.x];
     }
 }
 
+__global__ void transpose_simple_012_kernel(const float* d_input,
+                                            float* d_output, int dimz, int dimy,
+                                            int dimx) {
+    int x      = blockIdx.x * blockDim.x + threadIdx.x;
+    int y      = blockIdx.y * blockDim.y + threadIdx.y;
+    int z      = blockIdx.z * blockDim.z + threadIdx.z;
+    int iIndex = (z * dimy * dimx) + (y * dimx) + x;
+    int oIndex = (z * dimy * dimx) + (y * dimx) + x;
+
+    if (z < dimz && y < dimy && x < dimx) {
+        d_output[oIndex] = d_input[iIndex];
+    }
+}
+
+__global__ void transpose_simple_021_kernel(const float* d_input,
+                                            float* d_output, int dimz, int dimy,
+                                            int dimx) {
+    int x      = blockIdx.x * blockDim.x + threadIdx.x;
+    int y      = blockIdx.y * blockDim.y + threadIdx.y;
+    int z      = blockIdx.z * blockDim.z + threadIdx.z;
+    int iIndex = (z * dimy * dimx) + (y * dimx) + x;
+    int oIndex = (z * dimx * dimy) + (x * dimy) + y;
+
+    if (z < dimz && y < dimy && x < dimx) {
+        d_output[oIndex] = d_input[iIndex];
+    }
+}
+
+__global__ void transpose_simple_102_kernel(const float* d_input,
+                                            float* d_output, int dimz, int dimy,
+                                            int dimx) {
+    int x      = blockIdx.x * blockDim.x + threadIdx.x;
+    int y      = blockIdx.y * blockDim.y + threadIdx.y;
+    int z      = blockIdx.z * blockDim.z + threadIdx.z;
+    int iIndex = (z * dimy * dimx) + (y * dimx) + x;
+    int oIndex = (y * dimz * dimx) + (z * dimx) + x;
+
+    if (z < dimz && y < dimy && x < dimx) {
+        d_output[oIndex] = d_input[iIndex];
+    }
+}
+
+__global__ void transpose_simple_120_kernel(const float* d_input,
+                                            float* d_output, int dimz, int dimy,
+                                            int dimx) {
+    int x      = blockIdx.x * blockDim.x + threadIdx.x;
+    int y      = blockIdx.y * blockDim.y + threadIdx.y;
+    int z      = blockIdx.z * blockDim.z + threadIdx.z;
+    int iIndex = (z * dimy * dimx) + (y * dimx) + x;
+    int oIndex = (y * dimx * dimz) + (x * dimz) + z;
+
+    if (z < dimz && y < dimy && x < dimx) {
+        d_output[oIndex] = d_input[iIndex];
+    }
+}
+
+__global__ void transpose_simple_201_kernel(const float* d_input,
+                                            float* d_output, int dimz, int dimy,
+                                            int dimx) {
+    int x      = blockIdx.x * blockDim.x + threadIdx.x;
+    int y      = blockIdx.y * blockDim.y + threadIdx.y;
+    int z      = blockIdx.z * blockDim.z + threadIdx.z;
+    int iIndex = (z * dimy * dimx) + (y * dimx) + x;
+    int oIndex = (x * dimz * dimy) + (z * dimy) + y;
+
+    if (z < dimz && y < dimy && x < dimx) {
+        d_output[oIndex] = d_input[iIndex];
+    }
+}
+
+__global__ void transpose_simple_210_kernel(const float* d_input,
+                                            float* d_output, int dimz, int dimy,
+                                            int dimx) {
+    int x      = blockIdx.x * blockDim.x + threadIdx.x;
+    int y      = blockIdx.y * blockDim.y + threadIdx.y;
+    int z      = blockIdx.z * blockDim.z + threadIdx.z;
+    int iIndex = (z * dimy * dimx) + (y * dimx) + x;
+    int oIndex = (x * dimy * dimz) + (y * dimz) + z;
+
+    if (z < dimz && y < dimy && x < dimx) {
+        d_output[oIndex] = d_input[iIndex];
+    }
+}
+
+
+void transpose_simple_selector(const dim3& DimGrid, const dim3& DimBlock,
+                               const float* d_input, float* d_output,
+                               const int* dim, const int* perm) {
+    if (perm[0] == 0 && perm[1] == 1 && perm[2] == 2) {
+        transpose_simple_012_kernel<<<DimGrid, DimBlock>>>(
+            d_input, d_output, dim[0], dim[1], dim[2]);
+    } else if (perm[0] == 0 && perm[1] == 2 && perm[2] == 1) {
+        transpose_simple_021_kernel<<<DimGrid, DimBlock>>>(
+            d_input, d_output, dim[0], dim[1], dim[2]);
+    } else if (perm[0] == 1 && perm[1] == 0 && perm[2] == 2) {
+        transpose_simple_102_kernel<<<DimGrid, DimBlock>>>(
+            d_input, d_output, dim[0], dim[1], dim[2]);
+    } else if (perm[0] == 1 && perm[1] == 2 && perm[2] == 0) {
+        transpose_simple_120_kernel<<<DimGrid, DimBlock>>>(
+            d_input, d_output, dim[0], dim[1], dim[2]);
+    } else if (perm[0] == 2 && perm[1] == 0 && perm[2] == 1) {
+        transpose_simple_201_kernel<<<DimGrid, DimBlock>>>(
+            d_input, d_output, dim[0], dim[1], dim[2]);
+    } else if (perm[0] == 2 && perm[1] == 1 && perm[2] == 0) {
+        transpose_simple_210_kernel<<<DimGrid, DimBlock>>>(
+            d_input, d_output, dim[0], dim[1], dim[2]);
+    }
+}
+
+__global__ void transpose_shm_012_kernel(const float* d_input, float* d_output,
+                                         int dimz, int dimy, int dimx) {
+    __shared__ float buffer[TILE][TILE][TILE];
+
+    int x = blockIdx.x * TILE + threadIdx.x;
+    int y = blockIdx.y * TILE + threadIdx.y;
+    int z = blockIdx.z * TILE + threadIdx.z;
+    if (z < dimz && y < dimy && x < dimx) {
+        int iIndex = (z * dimy * dimx) + (y * dimx) + x;
+        buffer[threadIdx.z][threadIdx.y][threadIdx.x] = d_input[iIndex];
+    }
+    __syncthreads();
+
+    if (z < dimz && y < dimy && x < dimx) {
+        int oIndex       = (z * dimy * dimx) + (y * dimx) + x;
+        d_output[oIndex] = buffer[threadIdx.z][threadIdx.y][threadIdx.x];
+    }
+}
+
+
+__global__ void transpose_shm_021_kernel(const float* d_input, float* d_output,
+                                         int dimz, int dimy, int dimx) {
+    __shared__ float buffer[TILE][TILE][TILE];
+
+    int x = blockIdx.x * TILE + threadIdx.x;
+    int y = blockIdx.y * TILE + threadIdx.y;
+    int z = blockIdx.z * TILE + threadIdx.z;
+    if (z < dimz && y < dimy && x < dimx) {
+        int iIndex = (z * dimy * dimx) + (y * dimx) + x;
+        buffer[threadIdx.z][threadIdx.x][threadIdx.y] = d_input[iIndex];
+    }
+    __syncthreads();
+
+    if (z < dimz && y < dimx && x < dimy) {
+        int oIndex       = (z * dimx * dimy) + (x * dimy) + y;
+        d_output[oIndex] = buffer[threadIdx.z][threadIdx.y][threadIdx.x];
+    }
+}
+
+
+__global__ void transpose_shm_102_kernel(const float* d_input, float* d_output,
+                                         int dimz, int dimy, int dimx) {
+    __shared__ float buffer[TILE][TILE][TILE];
+
+    int x = blockIdx.x * TILE + threadIdx.x;
+    int y = blockIdx.y * TILE + threadIdx.y;
+    int z = blockIdx.z * TILE + threadIdx.z;
+    if (z < dimz && y < dimy && x < dimx) {
+        int iIndex = (z * dimy * dimx) + (y * dimx) + x;
+        buffer[threadIdx.y][threadIdx.z][threadIdx.x] = d_input[iIndex];
+    }
+    __syncthreads();
+
+    if (z < dimy && y < dimz && x < dimx) {
+        int oIndex       = (y * dimz * dimx) + (z * dimx) + x;
+        d_output[oIndex] = buffer[threadIdx.z][threadIdx.y][threadIdx.x];
+    }
+}
+
+
+__global__ void transpose_shm_120_kernel(const float* d_input, float* d_output,
+                                         int dimz, int dimy, int dimx) {
+    __shared__ float buffer[TILE][TILE][TILE];
+
+    int x = blockIdx.x * TILE + threadIdx.x;
+    int y = blockIdx.y * TILE + threadIdx.y;
+    int z = blockIdx.z * TILE + threadIdx.z;
+    if (z < dimz && y < dimy && x < dimx) {
+        int iIndex = (z * dimy * dimx) + (y * dimx) + x;
+        buffer[threadIdx.y][threadIdx.x][threadIdx.z] = d_input[iIndex];
+    }
+    __syncthreads();
+
+    x = blockIdx.z * TILE + threadIdx.x;
+    y = blockIdx.x * TILE + threadIdx.y;
+    z = blockIdx.y * TILE + threadIdx.z;
+    if (z < dimy && y < dimx && x < dimz) {
+        int oIndex       = (z * dimx * dimz) + (y * dimz) + x;
+        d_output[oIndex] = buffer[threadIdx.z][threadIdx.y][threadIdx.x];
+    }
+}
+
+
+__global__ void transpose_shm_201_kernel(const float* d_input, float* d_output,
+                                         int dimz, int dimy, int dimx) {
+    __shared__ float buffer[TILE][TILE][TILE];
+
+    int x = blockIdx.x * TILE + threadIdx.x;
+    int y = blockIdx.y * TILE + threadIdx.y;
+    int z = blockIdx.z * TILE + threadIdx.z;
+    if (z < dimz && y < dimy && x < dimx) {
+        int iIndex = (x * dimy * dimx) + (z * dimx) + y;
+        buffer[threadIdx.x][threadIdx.z][threadIdx.y] = d_input[iIndex];
+    }
+    __syncthreads();
+
+    if (z < dimx && y < dimz && x < dimy) {
+        int oIndex       = (z * dimz * dimy) + (y * dimy) + x;
+        d_output[oIndex] = buffer[threadIdx.z][threadIdx.y][threadIdx.x];
+    }
+}
+
+
+__global__ void transpose_shm_210_kernel(const float* d_input, float* d_output,
+                                         int dimz, int dimy, int dimx) {
+    __shared__ float buffer[TILE][TILE][TILE];
+
+    int x = blockIdx.x * TILE + threadIdx.x;
+    int y = blockIdx.y * TILE + threadIdx.y;
+    int z = blockIdx.z * TILE + threadIdx.z;
+    if (z < dimz && y < dimy && x < dimx) {
+        int iIndex = (z * dimy * dimx) + (y * dimx) + x;
+        buffer[threadIdx.x][threadIdx.y][threadIdx.z] = d_input[iIndex];
+    }
+    __syncthreads();
+
+    if (z < dimx && y < dimy && x < dimz) {
+        int oIndex       = (x * dimy * dimz) + (y * dimz) + z;
+        d_output[oIndex] = buffer[threadIdx.z][threadIdx.y][threadIdx.x];
+    }
+}
+
+void transpose_shm_selector(const dim3& DimGrid, const dim3& DimBlock,
+                            const float* d_input, float* d_output,
+                            const int* dim, const int* perm) {
+    if (perm[0] == 0 && perm[1] == 1 && perm[2] == 2) {
+        transpose_shm_012_kernel<<<DimGrid, DimBlock>>>(d_input, d_output,
+                                                        dim[0], dim[1], dim[2]);
+    } else if (perm[0] == 0 && perm[1] == 2 && perm[2] == 1) {
+        transpose_shm_021_kernel<<<DimGrid, DimBlock>>>(d_input, d_output,
+                                                        dim[0], dim[1], dim[2]);
+    } else if (perm[0] == 1 && perm[1] == 0 && perm[2] == 2) {
+        transpose_shm_102_kernel<<<DimGrid, DimBlock>>>(d_input, d_output,
+                                                        dim[0], dim[1], dim[2]);
+    } else if (perm[0] == 1 && perm[1] == 2 && perm[2] == 0) {
+        transpose_shm_120_kernel<<<DimGrid, DimBlock>>>(d_input, d_output,
+                                                        dim[0], dim[1], dim[2]);
+    } else if (perm[0] == 2 && perm[1] == 0 && perm[2] == 1) {
+        transpose_shm_201_kernel<<<DimGrid, DimBlock>>>(d_input, d_output,
+                                                        dim[0], dim[1], dim[2]);
+    } else if (perm[0] == 2 && perm[1] == 1 && perm[2] == 0) {
+        transpose_shm_210_kernel<<<DimGrid, DimBlock>>>(d_input, d_output,
+                                                        dim[0], dim[1], dim[2]);
+    }
+}
+
+template<int pz, int py, int px>
+__global__ void transpose_shm_kernel_tmpl(const float* d_input, float* d_output,
+                                          int dimz, int dimy, int dimx) {
+    __shared__ float buffer[TILE][TILE][TILE];
+
+    int iDim[3] = {dimz, dimy, dimx};
+    int x       = blockIdx.x * TILE + threadIdx.x;
+    int y       = blockIdx.y * TILE + threadIdx.y;
+    int z       = blockIdx.z * TILE + threadIdx.z;
+    if (z < iDim[0] && y < iDim[1] && x < iDim[2]) {
+        int iIndex     = (z * iDim[1] * iDim[2]) + (y * iDim[2]) + x;
+        int threads[3] = {threadIdx.z, threadIdx.y, threadIdx.x};
+        buffer[threads[pz]][threads[py]][threads[px]] = d_input[iIndex];
+    }
+    __syncthreads();
+
+    int oDim[3]   = {iDim[pz], iDim[py], iDim[px]};
+    int blocks[3] = {blockIdx.z, blockIdx.y, blockIdx.x};
+    x             = blocks[px] * TILE + threadIdx.x;
+    y             = blocks[py] * TILE + threadIdx.y;
+    z             = blocks[pz] * TILE + threadIdx.z;
+    if (z < oDim[0] && y < oDim[1] && x < oDim[2]) {
+        int oIndex       = (z * oDim[1] * oDim[2]) + (y * oDim[2]) + x;
+        d_output[oIndex] = buffer[threadIdx.z][threadIdx.y][threadIdx.x];
+    }
+}
+
+void transpose_shm_tmpl_selector(const dim3& DimGrid, const dim3& DimBlock,
+                                 const float* d_input, float* d_output,
+                                 const int* dim, const int* perm) {
+    if (perm[0] == 0 && perm[1] == 1 && perm[2] == 2) {
+        transpose_shm_kernel_tmpl<0, 1, 2>
+            <<<DimGrid, DimBlock>>>(d_input, d_output, dim[0], dim[1], dim[2]);
+    } else if (perm[0] == 0 && perm[1] == 2 && perm[2] == 1) {
+        transpose_shm_kernel_tmpl<0, 2, 1>
+            <<<DimGrid, DimBlock>>>(d_input, d_output, dim[0], dim[1], dim[2]);
+    } else if (perm[0] == 1 && perm[1] == 0 && perm[2] == 2) {
+        transpose_shm_kernel_tmpl<1, 0, 2>
+            <<<DimGrid, DimBlock>>>(d_input, d_output, dim[0], dim[1], dim[2]);
+    } else if (perm[0] == 1 && perm[1] == 2 && perm[2] == 0) {
+        transpose_shm_kernel_tmpl<1, 2, 0>
+            <<<DimGrid, DimBlock>>>(d_input, d_output, dim[0], dim[1], dim[2]);
+    } else if (perm[0] == 2 && perm[1] == 0 && perm[2] == 1) {
+        transpose_shm_kernel_tmpl<2, 0, 1>
+            <<<DimGrid, DimBlock>>>(d_input, d_output, dim[0], dim[1], dim[2]);
+    } else if (perm[0] == 2 && perm[1] == 1 && perm[2] == 0) {
+        transpose_shm_kernel_tmpl<2, 1, 0>
+            <<<DimGrid, DimBlock>>>(d_input, d_output, dim[0], dim[1], dim[2]);
+    }
+}
 
 // ============================================================================
 // C++ SECTION
@@ -189,11 +496,11 @@ void process(std::string name, bool testbench_mode, const float* gold,
         std::cout << name << std::endl;
         std::cout << "            Check: " << (is_correct ? "OK" : "FAIL")
                   << std::endl;
-        std::cout << " Bandwidth (GB/s): " << bandwidth << std::endl;
         if (print_speedup) {
             std::cout << "        Time (ms): " << kernel_ms << std::endl;
             std::cout << "     Speedup (ms): " << speedup << "x" << std::endl;
         }
+        std::cout << " Bandwidth (GB/s): " << bandwidth << std::endl;
         std::cout << std::endl;
     } else {
         file << name << std::endl;
@@ -303,13 +610,11 @@ int main(int argc, char* argv[]) {
     // COPY BANDWIDTH SIMPLE
     CHECK_CUDA(cudaMemset(d_output, 0, bytes));  // Initialize output
     copy_simple_kernel<<<DimGrid, DimBlock>>>(d_input, d_output, dim[0], dim[1],
-                                              dim[2], perm[0], perm[1],
-                                              perm[2]);  // warmup
+                                              dim[2]);  // warmup
     CHECK_CUDA(cudaEventRecord(startEvent, 0));
     for (int i = 0; i < NUM_REPS; ++i)
         copy_simple_kernel<<<DimGrid, DimBlock>>>(d_input, d_output, dim[0],
-                                                  dim[1], dim[2], perm[0],
-                                                  perm[1], perm[2]);
+                                                  dim[1], dim[2]);
     CHECK_CUDA(cudaEventRecord(stopEvent, 0));
     CHECK_CUDA(cudaEventSynchronize(stopEvent));
     CHECK_CUDA(cudaEventElapsedTime(&kernel_ms, startEvent, stopEvent));
@@ -321,13 +626,11 @@ int main(int argc, char* argv[]) {
     // COPY BANDWIDTH SHARED-MEMORY
     CHECK_CUDA(cudaMemset(d_output, 0, bytes));  // Initialize output
     copy_shm_kernel<<<DimGrid, DimBlock>>>(d_input, d_output, dim[0], dim[1],
-                                           dim[2], perm[0], perm[1],
-                                           perm[2]);  // warmup
+                                           dim[2]);  // warmup
     CHECK_CUDA(cudaEventRecord(startEvent, 0));
     for (int i = 0; i < NUM_REPS; ++i)
         copy_shm_kernel<<<DimGrid, DimBlock>>>(d_input, d_output, dim[0],
-                                               dim[1], dim[2], perm[0], perm[1],
-                                               perm[2]);
+                                               dim[1], dim[2]);
     CHECK_CUDA(cudaEventRecord(stopEvent, 0));
     CHECK_CUDA(cudaEventSynchronize(stopEvent));
     CHECK_CUDA(cudaEventElapsedTime(&kernel_ms, startEvent, stopEvent));
@@ -337,21 +640,40 @@ int main(int argc, char* argv[]) {
 
     // ------------------------------------------------------------------------
     // TRANSPOSE SIMPLE
-    CHECK_CUDA(cudaMemset(d_output, 0, bytes));  // Initialize output
-    transpose_simple_kernel<<<DimGrid, DimBlock>>>(
-        d_input, d_output, dim[0], dim[1], dim[2], perm[0], perm[1],
-        perm[2]);  // warmup
-    CHECK_CUDA(cudaEventRecord(startEvent, 0));
-    for (int i = 0; i < NUM_REPS; ++i)
-        transpose_simple_kernel<<<DimGrid, DimBlock>>>(
-            d_input, d_output, dim[0], dim[1], dim[2], perm[0], perm[1],
-            perm[2]);
-    CHECK_CUDA(cudaEventRecord(stopEvent, 0));
-    CHECK_CUDA(cudaEventSynchronize(stopEvent));
-    CHECK_CUDA(cudaEventElapsedTime(&kernel_ms, startEvent, stopEvent));
-    CHECK_CUDA(cudaMemcpy(h_output, d_output, bytes, cudaMemcpyDeviceToHost));
-    process("Transpose simple", testbench_mode, h_gold, h_output, size,
-            kernel_ms, host_ms, log, true);
+    // CHECK_CUDA(cudaMemset(d_output, 0, bytes));  // Initialize output
+    // transpose_simple_kernel<<<DimGrid, DimBlock>>>(
+    //     d_input, d_output, dim[0], dim[1], dim[2], perm[0], perm[1],
+    //     perm[2]);  // warmup
+    // CHECK_CUDA(cudaEventRecord(startEvent, 0));
+    // for (int i = 0; i < NUM_REPS; ++i)
+    //     transpose_simple_kernel<<<DimGrid, DimBlock>>>(
+    //         d_input, d_output, dim[0], dim[1], dim[2], perm[0], perm[1],
+    //         perm[2]);
+    // CHECK_CUDA(cudaEventRecord(stopEvent, 0));
+    // CHECK_CUDA(cudaEventSynchronize(stopEvent));
+    // CHECK_CUDA(cudaEventElapsedTime(&kernel_ms, startEvent, stopEvent));
+    // CHECK_CUDA(cudaMemcpy(h_output, d_output, bytes,
+    // cudaMemcpyDeviceToHost)); process("Transpose simple", testbench_mode,
+    // h_gold, h_output, size,
+    //         kernel_ms, host_ms, log, true);
+
+    // ------------------------------------------------------------------------
+    // TRANSPOSE SIMPLE SELECTOR
+    // CHECK_CUDA(cudaMemset(d_output, 0, bytes));  // Initialize output
+    // transpose_simple_selector(DimGrid, DimBlock, d_input, d_output, dim,
+    //                           perm);  // warmup
+    // CHECK_CUDA(cudaEventRecord(startEvent, 0));
+    // for (int i = 0; i < NUM_REPS; ++i)
+    //     transpose_simple_selector(DimGrid, DimBlock, d_input, d_output, dim,
+    //                               perm);
+    // CHECK_CUDA(cudaEventRecord(stopEvent, 0));
+    // CHECK_CUDA(cudaEventSynchronize(stopEvent));
+    // CHECK_CUDA(cudaEventElapsedTime(&kernel_ms, startEvent, stopEvent));
+    // CHECK_CUDA(cudaMemcpy(h_output, d_output, bytes,
+    // cudaMemcpyDeviceToHost)); process("Transpose simple selector",
+    // testbench_mode, h_gold, h_output, size,
+    //         kernel_ms, host_ms, log, true);
+
 
     // ------------------------------------------------------------------------
     // TRANSPOSE SHARED-MEMORY
@@ -372,22 +694,54 @@ int main(int argc, char* argv[]) {
             size, kernel_ms, host_ms, log, true);
 
     // ------------------------------------------------------------------------
-    // TRANSPOSE SHARED-MEMORY + BANK CONFLICT FREE
+    // TRANSPOSE SHARED-MEMORY SELECTOR
     CHECK_CUDA(cudaMemset(d_output, 0, bytes));  // Initialize output
-    transpose_shm_bank_kernel<<<DimGrid, DimBlock>>>(
-        d_input, d_output, dim[0], dim[1], dim[2], perm[0], perm[1],
-        perm[2]);  // warmup
+    transpose_shm_selector(DimGrid, DimBlock, d_input, d_output, dim,
+                           perm);  // warmup
     CHECK_CUDA(cudaEventRecord(startEvent, 0));
     for (int i = 0; i < NUM_REPS; ++i)
-        transpose_shm_bank_kernel<<<DimGrid, DimBlock>>>(
-            d_input, d_output, dim[0], dim[1], dim[2], perm[0], perm[1],
-            perm[2]);
+        transpose_shm_selector(DimGrid, DimBlock, d_input, d_output, dim, perm);
     CHECK_CUDA(cudaEventRecord(stopEvent, 0));
     CHECK_CUDA(cudaEventSynchronize(stopEvent));
     CHECK_CUDA(cudaEventElapsedTime(&kernel_ms, startEvent, stopEvent));
     CHECK_CUDA(cudaMemcpy(h_output, d_output, bytes, cudaMemcpyDeviceToHost));
-    process("Transpose with shared-memory (bank conflict free)", testbench_mode,
+    process("Transpose with shared-memory selector", testbench_mode, h_gold,
+            h_output, size, kernel_ms, host_ms, log, true);
+
+    // ------------------------------------------------------------------------
+    // TRANSPOSE SHARED-MEMORY SELECTOR TMPL
+    CHECK_CUDA(cudaMemset(d_output, 0, bytes));  // Initialize output
+    transpose_shm_tmpl_selector(DimGrid, DimBlock, d_input, d_output, dim,
+                                perm);  // warmup
+    CHECK_CUDA(cudaEventRecord(startEvent, 0));
+    for (int i = 0; i < NUM_REPS; ++i)
+        transpose_shm_tmpl_selector(DimGrid, DimBlock, d_input, d_output, dim,
+                                    perm);
+    CHECK_CUDA(cudaEventRecord(stopEvent, 0));
+    CHECK_CUDA(cudaEventSynchronize(stopEvent));
+    CHECK_CUDA(cudaEventElapsedTime(&kernel_ms, startEvent, stopEvent));
+    CHECK_CUDA(cudaMemcpy(h_output, d_output, bytes, cudaMemcpyDeviceToHost));
+    process("Transpose with shared-memory selector TMPL", testbench_mode,
             h_gold, h_output, size, kernel_ms, host_ms, log, true);
+
+    // ------------------------------------------------------------------------
+    // TRANSPOSE SHARED-MEMORY + BANK CONFLICT FREE
+    // CHECK_CUDA(cudaMemset(d_output, 0, bytes));  // Initialize output
+    // transpose_shm_bank_kernel<<<DimGrid, DimBlock>>>(
+    //     d_input, d_output, dim[0], dim[1], dim[2], perm[0], perm[1],
+    //     perm[2]);  // warmup
+    // CHECK_CUDA(cudaEventRecord(startEvent, 0));
+    // for (int i = 0; i < NUM_REPS; ++i)
+    //     transpose_shm_bank_kernel<<<DimGrid, DimBlock>>>(
+    //         d_input, d_output, dim[0], dim[1], dim[2], perm[0], perm[1],
+    //         perm[2]);
+    // CHECK_CUDA(cudaEventRecord(stopEvent, 0));
+    // CHECK_CUDA(cudaEventSynchronize(stopEvent));
+    // CHECK_CUDA(cudaEventElapsedTime(&kernel_ms, startEvent, stopEvent));
+    // CHECK_CUDA(cudaMemcpy(h_output, d_output, bytes,
+    // cudaMemcpyDeviceToHost)); process("Transpose with shared-memory (bank
+    // conflict free)", testbench_mode,
+    //         h_gold, h_output, size, kernel_ms, host_ms, log, true);
 
     // ------------------------------------------------------------------------
     // CLEAN SHUTDOWN

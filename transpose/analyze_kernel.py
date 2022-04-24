@@ -16,7 +16,6 @@ while len(logs) > 0:
     # Process bandwith
     plt.figure(figsize=(10,5))
     counter = 0
-    bandwidth_max = 0
     for log in target_list:
         print(f'Reading {log} ...')
         perm = log[-7:-4]
@@ -32,7 +31,7 @@ while len(logs) > 0:
                 if i % 4 == 0:
                     name.append(info)
                 elif i % 4 == 1:
-                    check.append(bool(info))
+                    check.append(info == '1')
                 elif i % 4 == 2:
                     bandwidth.append(float(info))
                 elif i % 4 == 3:
@@ -45,19 +44,18 @@ while len(logs) > 0:
         pos = np.arange(counter, counter+offset, inc)
         for i in range(len(name)):
             plt.bar(pos[i], bandwidth[i], color=col[i])
-        plt.yticks(np.arange(50,650,50)) 
+        plt.yticks(np.arange(25,525,25)) 
         # plt.yticks(np.arange(0,150,50)) 
         plt.xticks([])  
         plt.text(counter, -30, perm, fontsize=11)
         plt.ylabel('Bandwidth (GB/s)')
         plt.xlabel('permutation', labelpad=20.0)
         counter = counter + offset + inc
-        bandwidth_max = max(bandwidth_max,max(bandwidth))
 
     plt.title(f"Dimension: {dim}")
     plt.legend(labels=name)
     plt.grid()
     plt.tight_layout()
     plt.savefig(f"images_kernel/{dim}.png",dpi=100)
-    print(f'bandwidth_max: {bandwidth_max}\n')
+    print()
 # plt.show()
