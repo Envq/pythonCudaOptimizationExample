@@ -39,7 +39,7 @@ while len(logs) > 0:
         assert all(check), "Check is False"
 
         inc = 0.9
-        col = ['tab:blue','tab:orange','tab:green','tab:red','tab:purple']
+        col = ['tab:green','tab:cyan','tab:blue','tab:purple','tab:pink','tab:red','tab:orange','tab:brown']
         offset = len(name) * inc
         pos = np.arange(counter, counter+offset, inc)
         for i in range(len(name)):
