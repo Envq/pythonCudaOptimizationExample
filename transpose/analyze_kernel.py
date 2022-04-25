@@ -57,7 +57,7 @@ if bandwidth_analysis:
             pos = np.arange(counter, counter+offset, inc)
             for i in range(len(name)):
                 plt.bar(pos[i], bandwidth[i], color=col[i])
-            plt.yticks(np.arange(25,525,25))
+            plt.yticks(np.arange(25,625,25))
             plt.xticks([])  
             plt.text(counter, -30, perm, fontsize=11)
             plt.ylabel('Bandwidth (GB/s)')
@@ -191,11 +191,11 @@ if speedup_analysis:
             pos = np.arange(counter, counter+offset, inc)
             for i in range(len(name)-2):
                 plt.bar(pos[i], speedup[2+i], color=col[2+i])
-            plt.yticks(np.arange(25,625,25))
+            plt.yticks(np.arange(25,425,25))
             plt.xticks([])  
             plt.text(counter, -30, perm, fontsize=11)
             plt.ylabel('Speedup')
-            plt.xlabel('permutation', labelpad=20.0)
+            plt.xlabel('permutation', labelpad=25.0)
             counter = counter + offset + inc
 
         plt.legend(labels=name[2:])
