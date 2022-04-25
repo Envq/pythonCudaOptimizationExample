@@ -2,9 +2,11 @@ import matplotlib.pyplot as plt
 import numpy as np
 import os
 
+
 # SETTINGS
 time_analysis    = 1
-speedup_analysis = 0
+speedup_analysis = 1
+
 
 # TILE ANALYSIS
 if time_analysis:
@@ -71,7 +73,6 @@ if time_analysis:
         plt.savefig(f"images/images_device/time_{dim}.png",dpi=100)
         print()
     print("-----------------\n")
-
 
 
 # SPEEDUP ANALYSIS
