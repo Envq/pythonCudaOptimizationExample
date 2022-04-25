@@ -5,7 +5,7 @@ import cupy as cp
 
 
 ####################################################################
-NUM_REPS  = 1000
+NUM_REPS  = 100
 DIMENSION = 1024
 # DIMENSION = round(0.5*np.product((184, 128, 3, 1)))
 # DIMENSION = round(0.5*np.product((19, 23, 16)))
@@ -22,7 +22,7 @@ def benchmark_raw(dim, n_run, n_crops):
     x = cp.arange(0, np.product(dim), dtype=np.float32).reshape(dim)
     y = cp.zeros(dim, dtype=cp.float32)
     times = list()
-    for _ in range(n_run):
+    for _ in range(n_run+n_crops):
         start = cp.cuda.Event()
         end = cp.cuda.Event()
         start.record()
@@ -30,12 +30,12 @@ def benchmark_raw(dim, n_run, n_crops):
         end.record()
         end.synchronize()
         times.append(cp.cuda.get_elapsed_time(start, end))  # milliseconds
-    return y, times[n_crops:]
+    return y, np.mean(times[n_crops:])
 
 def benchmark_lib(dim, n_run, n_crops):
     x = cp.arange(0, np.product(dim), dtype=np.float32).reshape(dim)
     times = list()
-    for _ in range(n_run):
+    for _ in range(n_run+n_crops):
         start = cp.cuda.Event()
         end = cp.cuda.Event()
         start.record()
@@ -43,29 +43,29 @@ def benchmark_lib(dim, n_run, n_crops):
         end.record()
         end.synchronize()
         times.append(cp.cuda.get_elapsed_time(start, end))  # milliseconds
-    return res, times[n_crops:]
+    return res, np.mean(times[n_crops:])
 
-def benchmark_cpu(dim, n_run, n_crops):
+def benchmark_numpy(dim, n_run, n_crops):
     x = np.arange(0, np.product(dim), dtype=np.float32).reshape(dim)
     times = list()
-    for _ in range(n_run):
+    for _ in range(n_run+n_crops):
         start = time.time()
         res = np.transpose(x)
         end = time.time()
         time_execute = (end - start) * 1e3
         times.append(time_execute)  # milliseconds
-    return res, times[n_crops:]
+    return res, np.mean(times[n_crops:])
 
 def benchmark_lib2(dim, n_run, n_crops):
     x = cp.arange(0, np.product(dim), dtype=np.float32).reshape(dim)
     times = list()
-    for _ in range(n_run):
+    for _ in range(n_run+n_crops):
         start = time.time()
         res = cp.transpose(x)
         end = time.time()
         time_execute = (end - start) * 1e3
         times.append(time_execute)  # milliseconds
-    return res, times[n_crops:]
+    return res, np.mean(times[n_crops:])
 
 
 #####################################################################
@@ -75,23 +75,19 @@ print('NUM_CROP: ', NUM_CROP)
 print('NUM_REPS: ', NUM_REPS)
 
 print('\nTest numpy.transpose')
-res_cpu, times = benchmark_cpu(dim, NUM_REPS, NUM_CROP)
-time_cpu = np.mean(times)
+res_cpu, time_cpu = benchmark_numpy(dim, NUM_REPS, NUM_CROP)
 print("ms: ", time_cpu)
 
 print('\nTest cupy.transpose with cudaEvent')
-res_lib, times = benchmark_lib(dim, NUM_REPS, NUM_CROP)
-time_lib = np.mean(times)
+res_lib, time_lib = benchmark_lib(dim, NUM_REPS, NUM_CROP)
 print("ms: ", time_lib)
 
 print('\nTest cupy.transpose with time')
-res_lib2, times = benchmark_lib2(dim, NUM_REPS, NUM_CROP)
-time_lib2 = np.mean(times)
+res_lib2, time_lib2 = benchmark_lib2(dim, NUM_REPS, NUM_CROP)
 print("ms: ", time_lib2)
 
 print('\nTest custom kernel')
-res_raw, times = benchmark_raw(dim, NUM_REPS, NUM_CROP)
-time_raw = np.mean(times)
+res_raw, time_raw = benchmark_raw(dim, NUM_REPS, NUM_CROP)
 print("ms: ", time_raw)
 
 assert(np.array_equal(res_cpu, cp.asnumpy(res_raw)))
