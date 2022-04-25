@@ -5,9 +5,10 @@
 
 // ============================================================================
 // GlOBAL VARS
-const int  M    = 1024;
-const int  N    = 1024;
-const int  TILE = 32;
+const int  NUM_REPS = 100;
+const int  M        = 10240;
+const int  N        = 10240;
+const int  TILE     = 32;
 const dim3 DimBlock(TILE, TILE, 1);
 const dim3 DimGrid(std::ceil((float)N / TILE), std::ceil((float)M / TILE), 1);
 
@@ -17,16 +18,16 @@ const int BYTES = SIZE * sizeof(float);
 
 // ============================================================================
 // KERNELS
-__global__ void transposeKernel(const float* d_input, float* d_output,
-                                const int m, const int n) {
+__global__ void kTranspose_shm_bank(const float* d_input, float* d_output,
+                                    const int m, const int n) {
     __shared__ float buffer[TILE][TILE + 1];
 
     // read matrix in linear order
     int col = blockIdx.x * TILE + threadIdx.x;
     int row = blockIdx.y * TILE + threadIdx.y;
-    if ((col < n) && (row < m)) {
-        buffer[threadIdx.y][threadIdx.x] = d_input[row * n + col];
-    }
+    if ((col < n) && (row < m))
+        ;
+    { buffer[threadIdx.y][threadIdx.x] = d_input[row * n + col]; }
     __syncthreads();
 
     // write transposed matrix in linear order
@@ -76,10 +77,12 @@ void process_test(const float* gold, const float* result, int size,
     bool correct = check_array(gold, result, size);
     if (correct) {
         // Note: GB/sec = (Byte*1e-9)/(msec*1e-3) = (Byte*1e6)/msec
-        double bandwitdh = 2 * size * sizeof(float) * 1e-6 * ms;
+        double bandwitdh = 2 * size * sizeof(float) * 1e-6 * NUM_REPS / ms;
         std::cout << "Bandwidth (GB/s): " << bandwitdh << std::endl;
-        std::cout << "     time (msec): " << ms << std::endl;
-        std::cout << "     Time Speedup: " << host_ms / ms << "x" << std::endl;
+        double time = ms / NUM_REPS;
+        std::cout << "     time (msec): " << time << std::endl;
+        std::cout << "     Time Speedup: " << host_ms / time << "x"
+                  << std::endl;
     }
     std::cout << std::endl;
 }
@@ -137,8 +140,12 @@ int main(int argc, char* argv[]) {
     CHECK_CUDA(cudaMemcpy(d_input, h_input, BYTES, cudaMemcpyHostToDevice));
 
     // KERNEL EXECUTE
+    CHECK_CUDA(cudaMemset(d_output, 0, BYTES));  // Initialize output
+    kTranspose_shm_bank<<<DimGrid, DimBlock>>>(d_input, d_output, M,
+                                               N);  // warm-up
     CHECK_CUDA(cudaEventRecord(startEvent, 0));
-    transposeKernel<<<DimGrid, DimBlock>>>(d_input, d_output, M, N);
+    for (int i = 0; i < NUM_REPS; ++i)
+        kTranspose_shm_bank<<<DimGrid, DimBlock>>>(d_input, d_output, M, N);
     CHECK_CUDA(cudaEventRecord(stopEvent, 0));
     CHECK_CUDA(cudaEventSynchronize(stopEvent));
     CHECK_CUDA(cudaEventElapsedTime(&device_ms, startEvent, stopEvent));

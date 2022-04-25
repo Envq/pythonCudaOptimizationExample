@@ -6,7 +6,7 @@ from math import ceil
 
 ####################################################################
 np.set_printoptions(threshold=1000 ,linewidth=1000)
-NUM_REPS  = 10
+NUM_REPS  = 100
 DIMENSION = 1024
 # DIMENSION = round(0.5*np.product((184, 128, 3, 1)))
 # DIMENSION = round(0.5*np.product((19, 23, 16)))
@@ -67,6 +67,6 @@ for i in range(NUM_REPS+CROP):
 
 
 #####################################################################
-print(f'           numpy time (msec): {np.mean(times_numpy[CROP:])}')
-print(f'   pycuda kernel time (msec): {np.mean(times_kernels[CROP:])}')
-print(f'pycuda reshaping time (msec): {np.mean(times_reshape[CROP:])}')
+print(f'           numpy time (ms): {np.mean(times_numpy[CROP:])}')
+print(f'   pycuda kernel time (ms): {np.mean(times_kernels[CROP:])}')
+print(f'pycuda reshaping time (ms): {np.mean(times_reshape[CROP:])}')

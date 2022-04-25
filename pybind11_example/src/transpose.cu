@@ -1,14 +1,26 @@
 #include "CheckError.cuh"
 #include "transpose.cuh"
-#include <iostream>
 
 
-__global__ void matrix_transpose_kernel(const float* d_matrix_in,
-                                        float* d_matrix_out, int N) {
-    int col = blockIdx.y * blockDim.y + threadIdx.y;
-    int row = blockIdx.x * blockDim.x + threadIdx.x;
+const int TILE = 32;
 
-    d_matrix_out[row * N + col] = d_matrix_in[col * N + row];
+extern "C" __global__ void matrix_transpose_kernel(const float* d_input,
+                                                   float* d_output, const int m,
+                                                   const int n) {
+    __shared__ float buffer[TILE][TILE + 1];
+
+    int col = blockIdx.x * TILE + threadIdx.x;
+    int row = blockIdx.y * TILE + threadIdx.y;
+    if ((col < n) && (row < m)) {
+        buffer[threadIdx.y][threadIdx.x] = d_input[row * n + col];
+    }
+    __syncthreads();
+
+    col = blockIdx.y * TILE + threadIdx.x;
+    row = blockIdx.x * TILE + threadIdx.y;
+    if ((col < m) && (row < n)) {
+        d_output[row * m + col] = buffer[threadIdx.x][threadIdx.y];
+    }
 }
 
 
@@ -32,13 +44,9 @@ void cuda_accelerations::transpose(float* h_input, float* h_output, int size,
         DimGrid.y++;
     dim3 DimBlock(block_size_x, block_size_y, 1);
 
-    std::cout << "DimGrid: " << DimGrid.x << DimGrid.y << DimGrid.z
-              << std::endl;
-    std::cout << "DimBlock: " << DimBlock.x << DimBlock.y << DimBlock.z
-              << std::endl;
-
     // DEVICE EXECUTION
-    matrix_transpose_kernel<<<DimGrid, DimBlock>>>(d_input, d_output, size);
+    matrix_transpose_kernel<<<DimGrid, DimBlock>>>(d_input, d_output, size,
+                                                   size);
     CHECK_CUDA_ERROR
 
     // COPY DATA FROM DEVICE TO HOST
