@@ -195,9 +195,9 @@ void printMatrix(const float* matrix, int m, int n, std::string name) {
 }
 
 void transpose_cpp(const float* matrix, float* result, int m, int n) {
-    for (int row = 0; row < M; ++row) {
-        for (int col = 0; col < N; ++col) {
-            result[col * M + row] = matrix[row * N + col];
+    for (int row = 0; row < m; ++row) {
+        for (int col = 0; col < n; ++col) {
+            result[col * m + row] = matrix[row * n + col];
         }
     }
 }

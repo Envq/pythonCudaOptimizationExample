@@ -361,7 +361,7 @@ int main(int argc, char* argv[]) {
     // GET ARGS
     if (argc < 3) {
         std::cout << "call: executable dim_y dim_x" << std::endl;
-        std::cout << "example: ./testbench.out 32 32" << std::endl;
+        std::cout << "example: ./demo_matrix.out 32 32" << std::endl;
         return 0;
     }
     int testbench_mode = false;
@@ -672,7 +672,6 @@ int main(int argc, char* argv[]) {
     // CLEAN SHUTDOWN
     log.close();
     delete[] h_input;
-
     delete[] h_output;
     delete[] h_gold;
 

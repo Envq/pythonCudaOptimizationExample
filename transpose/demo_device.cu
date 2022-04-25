@@ -317,7 +317,7 @@ int main(int argc, char* argv[]) {
     if (argc < 5) {
         std::cout << "call: executable permutation dim_z dim_y dim_x"
                   << std::endl;
-        std::cout << "example: ./testbench.out 120 32 32 32" << std::endl;
+        std::cout << "example: ./demo_device.out 120 32 32 32" << std::endl;
         return 0;
     }
     int testbench_mode = false;
@@ -446,6 +446,7 @@ int main(int argc, char* argv[]) {
 
     // ------------------------------------------------------------------------
     // CLEAN SHUTDOWN
+    log.close();
     delete[] h_input;
     delete[] h_output;
     delete[] h_gold;

@@ -24,9 +24,9 @@ __global__ void transposeKernel(const float* d_input, float* d_output,
     // read matrix in linear order
     int col = blockIdx.x * TILE + threadIdx.x;
     int row = blockIdx.y * TILE + threadIdx.y;
-    if ((col < n) && (row < m))
-        ;
-    { buffer[threadIdx.y][threadIdx.x] = d_input[row * n + col]; }
+    if ((col < n) && (row < m)) {
+        buffer[threadIdx.y][threadIdx.x] = d_input[row * n + col];
+    }
     __syncthreads();
 
     // write transposed matrix in linear order
