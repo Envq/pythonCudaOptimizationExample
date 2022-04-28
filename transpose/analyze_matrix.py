@@ -26,7 +26,7 @@ if bandwidth_analysis:
             for i, info in enumerate(file):
                 info = info[:-1] # delete \n
                 if i % 5 == 0:
-                    name.append(f'{chr(65+i//4)} {info}')
+                    name.append(f'{chr(65+i//5)} {info}')
                 elif i % 5 == 1:
                     check.append(info == '1')
                 elif i % 5 == 2:
@@ -78,7 +78,7 @@ if speedup_analysis:
             for i, info in enumerate(file):
                 info = info[:-1] # delete \n
                 if i % 5 == 0:
-                    name.append(f'{chr(65+i//4)} {info}')
+                    name.append(f'{chr(65+i//5)} {info}')
                 elif i % 5 == 1:
                     check.append(info == '1')
                 elif i % 5 == 2:

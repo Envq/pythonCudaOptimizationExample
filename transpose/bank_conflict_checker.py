@@ -118,11 +118,19 @@ if __name__ == '__main__':
     dims = (8,8,8)
     check_conflicts(dims, padd, perms, print_shmem, print_conflics)
     """
+    PADDING = (0, 0, 0) =>
+    conflics of (0, 1, 2): 0.0
+    conflics of (0, 2, 1): 16.0
+    conflics of (1, 0, 2): 24.0
+    conflics of (1, 2, 0): 28.0
+    conflics of (2, 0, 1): 28.0
+    conflics of (2, 1, 0): 28.0
+
+    PADDING = (0, 0, 1) =>
     conflics of (0, 1, 2): 0.0
     conflics of (0, 2, 1): 5.333333333333333
     conflics of (1, 0, 2): 5.111111111111111
     conflics of (1, 2, 0): 16.0
     conflics of (2, 0, 1): 0.0
     conflics of (2, 1, 0): 16.0
-    conflics sum: 42.44444444444444
     """

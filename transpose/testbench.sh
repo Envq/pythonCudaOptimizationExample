@@ -21,7 +21,6 @@ do
     ./demo_kernel.out $p 32 512 16 testbench
     ./demo_kernel.out $p 512 16 32 testbench
     ./demo_kernel.out $p 512 32 16 testbench
-    ./demo_kernel.out $p 19 32 16 testbench
 
     ./demo_device.out $p 64 64 64 testbench
     ./demo_device.out $p 16 32 512 testbench
@@ -30,7 +29,6 @@ do
     ./demo_device.out $p 32 512 16 testbench
     ./demo_device.out $p 512 16 32 testbench
     ./demo_device.out $p 512 32 16 testbench
-    ./demo_device.out $p 19 32 16 testbench
 done
 
 

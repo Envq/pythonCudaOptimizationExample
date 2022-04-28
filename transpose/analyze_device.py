@@ -41,7 +41,7 @@ if time_analysis:
                 for i, info in enumerate(file):
                     info = info[:-1] # delete \n
                     if i % 4 == 0:
-                        name.append(f'{chr(65+i//3)} {info}')
+                        name.append(f'{chr(65+i//4)} {info}')
                     elif i % 4 == 1:
                         check.append(bool(info))
                     elif i % 4 == 2:
@@ -105,7 +105,7 @@ if speedup_analysis:
                 for i, info in enumerate(file):
                     info = info[:-1] # delete \n
                     if i % 4 == 0:
-                        name.append(f'{chr(65+i//3)} {info}')
+                        name.append(f'{chr(65+i//4)} {info}')
                     elif i % 4 == 1:
                         check.append(bool(info))
                     elif i % 4 == 2:

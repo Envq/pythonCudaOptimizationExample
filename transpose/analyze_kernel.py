@@ -40,7 +40,7 @@ if bandwidth_analysis:
                 for i, info in enumerate(file):
                     info = info[:-1] # delete \n
                     if i % 5 == 0:
-                        name.append(f'{chr(65+i//4)} {info}')
+                        name.append(f'{chr(65+i//5)} {info}')
                     elif i % 5 == 1:
                         check.append(info == '1')
                     elif i % 5 == 2:
@@ -57,11 +57,11 @@ if bandwidth_analysis:
             pos = np.arange(counter, counter+offset, inc)
             for i in range(len(name)):
                 plt.bar(pos[i], bandwidth[i], color=col[i])
-            plt.yticks(np.arange(25,625,25))
+            plt.yticks(np.arange(25,425,25))
             plt.xticks([])  
             plt.text(counter, -30, perm, fontsize=11)
             plt.ylabel('Bandwidth (GB/s)')
-            plt.xlabel('permutation', labelpad=20.0)
+            plt.xlabel('permutation', labelpad=30.0)
             counter = counter + offset + inc
 
         plt.title(f"Dimension: {dim}")
@@ -107,7 +107,7 @@ if time_analysis:
                 for i, info in enumerate(file):
                     info = info[:-1] # delete \n
                     if i % 5 == 0:
-                        name.append(f'{chr(65+i//4)} {info}')
+                        name.append(f'{chr(65+i//5)} {info}')
                     elif i % 5 == 1:
                         check.append(info == '1')
                     elif i % 5 == 2:
@@ -174,7 +174,7 @@ if speedup_analysis:
                 for i, info in enumerate(file):
                     info = info[:-1] # delete \n
                     if i % 5 == 0:
-                        name.append(f'{chr(65+i//4)} {info}')
+                        name.append(f'{chr(65+i//5)} {info}')
                     elif i % 5 == 1:
                         check.append(info == '1')
                     elif i % 5 == 2:
